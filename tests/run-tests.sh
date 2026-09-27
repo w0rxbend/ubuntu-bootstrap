@@ -8,7 +8,8 @@
 # Stages (in this order, per selected module set):
 #   validate     regenerate + `fluxion validate --strict` + lint every selected test profile, and dry-run them
 #   apply        ./bootstrap.sh --test --only MODULES               (real changes, sudo)
-#   idempotency  the same again: every module must exit 0 with "0 ok · 0 failed" (nothing left to do)
+#   idempotency  the same again: every module must exit 0 and nothing may run but its `assert` steps (fluxion
+#                re-checks those on every run)
 #   assert       tests/assertions/MODULE.sh: the real outcome (binaries + versions, repos, links, gsettings,
 #                services, docker run, skills, login shell, groups)
 #
@@ -236,20 +237,22 @@ if has_stage validate; then
     done
 fi
 
-# Items of module $1 that ran ("✔ ok") in bootstrap log $2, minus those that run on every --re-probe by design
-# (assert steps and package pre-install actions, see `profile_query.py probeless`). One key per line.
-reprobe_ran_items() {
-    local m="$1" log="$2" probeless
-    probeless="$(python3 tests/lib/profile_query.py "$(module_file "$m")" probeless)"
+# Items of module $1 that ran ("✔ ok") in bootstrap log $2, minus those that run again by design. $3 selects
+# them (see tests/lib/profile_query.py): `asserts` for a plain second run (fluxion re-checks every assert and
+# never skips a phase that holds one), `probeless` for a --re-probe run (asserts + package pre-install actions
+# without a step-level probeCommand). One key per line.
+ran_items() {
+    local m="$1" log="$2" query="$3" exempt
+    exempt="$(python3 tests/lib/profile_query.py "$(module_file "$m")" "$query")"
     sed 's/\x1b\[[0-9;]*m//g' "$log" |
         awk -v n="$m" '/^━━━ / { on = ($2 == n); next } on && /▸ .* \.\.\. ✔ ok/ { sub(/^ *▸ /, ""); sub(/ \.\.\. ✔ ok.*$/, ""); print }' |
-        grep -vxF -f <(printf '%s\n' "$probeless") || true
+        grep -vxF -f <(printf '%s\n' "$exempt") || true
 }
 
 # Evaluate a bootstrap --report file. $1 = stage, $2 = report, $3 = 1 when nothing may have run,
-# $4 = the bootstrap log (strict --re-probe mode: only items with a real probe count as "ran again")
+# $4 = the bootstrap log, $5 = which items may run again anyway (`asserts`, or `probeless` for --re-probe)
 evaluate_report() {
-    local stage="$1" report="$2" strict_zero="$3" log="${4:-}" m line rc note ok failed ran
+    local stage="$1" report="$2" strict_zero="$3" log="${4:-}" exempt="${5:-asserts}" m line rc note ok failed ran
     for m in "${MODULES[@]}"; do
         line="$(awk -F'\t' -v n="$m" '$1 == n' "$report" 2>/dev/null | tail -n1)"
         if [[ -z "$line" ]]; then
@@ -258,8 +261,8 @@ evaluate_report() {
         fi
         IFS=$'\t' read -r _ rc note _ ok failed _ _ <<<"$line"
         if [[ "$strict_zero" == 1 && -n "$log" ]]; then
-            ran="$(reprobe_ran_items "$m" "$log" | wc -l)"
-            [[ "$ran" -eq 0 ]] || reprobe_ran_items "$m" "$log" >"$LOG_DIR/reprobe-ran-$m.txt"
+            ran="$(ran_items "$m" "$log" "$exempt" | wc -l)"
+            [[ "$ran" -eq 0 ]] || ran_items "$m" "$log" "$exempt" >"$LOG_DIR/ran-again-$m.txt"
         else
             ran="$ok"
         fi
@@ -294,9 +297,9 @@ if has_stage idempotency; then
     ./bootstrap.sh --test --only "$ONLY_CSV" --no-tui "${extra[@]}" --report "$LOG_DIR/idempotency.tsv" 2>&1 |
         tee "$LOG_DIR/idempotency.log" || true
     if [[ $STRICT -eq 1 ]]; then
-        evaluate_report idempotency "$LOG_DIR/idempotency.tsv" 1 "$LOG_DIR/idempotency.log"
+        evaluate_report idempotency "$LOG_DIR/idempotency.tsv" 1 "$LOG_DIR/idempotency.log" probeless
     else
-        evaluate_report idempotency "$LOG_DIR/idempotency.tsv" 1
+        evaluate_report idempotency "$LOG_DIR/idempotency.tsv" 1 "$LOG_DIR/idempotency.log" asserts
     fi
 fi
 

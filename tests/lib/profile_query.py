@@ -12,6 +12,7 @@ Usage: profile_query.py PROFILE QUERY
   probeless      item keys that run on every --re-probe by design: `assert` steps (a check, not a change)
                  and the pre-install `actions` of package steps without a step-level probeCommand
                  (e.g. apt `update`, shown as action[N])
+  asserts        names of the `assert` steps: fluxion re-checks them on every run (never skipped from state)
 """
 
 import os
@@ -74,6 +75,8 @@ def main(path, query):
             if not spec.get("probeCommand"):
                 for i, _ in enumerate(spec.get("actions") or []):
                     out.append(f"action[{i}]")
+        elif query == "asserts" and kind == "assert":
+            out.append(step.get("name", ""))
         elif query == "sdkman" and kind == "sdkman-packages":
             out += names(spec.get("packages"), key="candidate")
     seen = set()
