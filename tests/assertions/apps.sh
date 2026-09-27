@@ -24,6 +24,9 @@ assert_apps() {
         check "keyring $k is a non-empty OpenPGP keyring" bash -c "test -s '$k' && gpg --show-keys --with-colons '$k' 2>/dev/null | grep -q '^pub'"
     done
 
+    check "~/.gnupg is a 0700 directory (gnupg-home, needed by the gpg-key steps)" bash -c \
+        'test -d "$HOME/.gnupg" && test "$(stat -c %a "$HOME/.gnupg")" = 700'
+
     section "packages"
     mapfile -t pkgs < <(profile_query 10-apps.yaml apt-packages)
     assert_pkgs "apps" "${pkgs[@]}" chatgpt fastfetch

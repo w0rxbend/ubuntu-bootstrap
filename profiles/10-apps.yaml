@@ -59,6 +59,22 @@ spec:
             command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
             message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
 
+    # fluxion 0.3.1's gpg-key kind reads each downloaded key with `gpg --batch --no-options --show-keys`, and with
+    # --no-options gpg refuses to create a missing ~/.gnupg ("Fatal: ~/.gnupg: directory does not exist!"), so
+    # on a fresh install (no ~/.gnupg yet) every gpg-key step failed. Create it the way gpg itself would (0700).
+    - name: gnupg-home
+      description: "~/.gnupg exists (0700) before the gpg-key steps read their keys"
+      dependsOn: [host-check]
+      steps:
+        - name: apps-gnupg-home
+          kind: commands
+          spec:
+            commands:
+              - name: gnupg-home
+                run: "install -d -m 0700 \"$HOME/.gnupg\""
+                creates: ${HOME}/.gnupg
+            probeCommand: "test -d $HOME/.gnupg"
+
     - name: gh
       description: "GitHub CLI from cli.github.com"
       dependsOn: [host-check]
@@ -79,7 +95,7 @@ spec:
 
     - name: claude-desktop
       description: "Claude desktop app from downloads.claude.ai (pulls in qemu/ovmf/virtiofsd)"
-      dependsOn: [host-check]
+      dependsOn: [host-check, gnupg-home]
       execution: { continueOnError: false }
       steps:
         - name: apps-claude-desktop-key
@@ -104,7 +120,7 @@ spec:
 
     - name: vscode
       description: "Visual Studio Code from packages.microsoft.com (deb822 source, same as the package writes)"
-      dependsOn: [host-check]
+      dependsOn: [host-check, gnupg-home]
       execution: { continueOnError: false }
       steps:
         - name: apps-vscode-key
@@ -141,7 +157,7 @@ spec:
 
     - name: onepassword
       description: "1Password desktop app from downloads.1password.com (deb822 source, same as the package writes)"
-      dependsOn: [host-check]
+      dependsOn: [host-check, gnupg-home]
       execution: { continueOnError: false }
       steps:
         - name: apps-1password-key
