@@ -374,6 +374,11 @@ See [Docker instead of podman](#docker-instead-of-podman).
   xplr, kind v0.31.0, zellij v0.44.1, kubectl (stable), neovide (AppImage), neovim (latest), lazygit 0.61.0,
   jujutsu v0.40.0, dotbot v0.4.2, and **yq** (mikefarah, newly added). Every tool gets its own
   `~/.apps/<tool>/bin`.
+  **Needs binstaller >= v0.3.0.** fluxion 0.3.1 as released pins binstaller v0.2.0, and that version cannot read the
+  GNU `@LongLink` tar entries in `zig-x86_64-linux-0.15.2.tar.xz`, so the binstaller step fails on zig. Either run
+  with the patched build (`FLUXION_BIN=~/Projects/Github/fluxion.cr-zorin-fixes/bin/fluxion ./bootstrap.sh`, which
+  pins v0.5.0), or put binstaller v0.3.0 or later on PATH (fluxion uses a binstaller on PATH as it is). Keep
+  `installerVersion` out of the profile: fluxion only accepts its own pinned version.
 - **nvim system links**: `/usr/local/bin/{nvim,neovim,vim}` point to `~/.apps/neovim/bin/nvim`, so `sudo vim` also
   opens your Neovim. `/usr/bin` belongs to dpkg and is not touched. binstaller's own sudo symlinks are turned off.
 - **Nerd Fonts** (nerd-fonts-installer, `~/.local/share/fonts/NerdFonts`), installed in 4 batches because fluxion
