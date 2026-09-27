@@ -1,0 +1,59 @@
+# obs.yaml - OBS Studio and its plugins from Flathub (optional module, not in the default run).
+#
+# Run alone:   ./bootstrap.sh --only obs
+# Contents:    flathub remote (no-op when it already exists) + com.obsproject.Studio with 10 plugins.
+# Caveats:     - Zorin OS Pro preinstalls com.obsproject.Studio, so on Pro only the plugins are new.
+#              - Flatpaks are installed system-wide; polkit authorises that without a password only for an
+#                active local desktop session, so run this from the GNOME session, not over SSH.
+#              - The OBS phase is a leaf with continueOnError, so one unavailable plugin does not stop the rest.
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: zorin-obs
+  labels: { distro: zorin, module: obs }
+spec:
+  target:
+    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+  phases:
+    - name: host-check
+      steps:
+        - name: obs-host-check
+          kind: assert
+          spec:
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
+            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+
+    - name: flathub
+      description: "Make sure the system-wide flathub remote exists (remote-add --if-not-exists)"
+      dependsOn: [host-check]
+      steps:
+        - name: obs-flathub-remote
+          kind: flatpak-remote
+          spec:
+            remote: flathub
+            url: https://flathub.org/repo/flathub.flatpakrepo
+            checksum:
+              algorithm: sha256
+              value: 3371dd250e61d9e1633630073fefda153cd4426f72f4afa0c3373ae2e8fea03a
+
+    - name: obs-studio
+      description: "OBS Studio and plugins (leaf phase)"
+      dependsOn: [host-check, flathub]
+      execution: { continueOnError: true }
+      steps:
+        - name: obs-flatpaks
+          kind: flatpak-packages
+          spec:
+            remote: flathub
+            apps:
+              - com.obsproject.Studio
+              - com.obsproject.Studio.Plugin.DroidCam
+              - com.obsproject.Studio.Plugin.BackgroundRemoval
+              - com.obsproject.Studio.Plugin.Gstreamer
+              - com.obsproject.Studio.Plugin.GStreamerVaapi
+              - com.obsproject.Studio.Plugin.OBSPWVideo
+              - com.obsproject.Studio.Plugin.AitumMultistream
+              - com.obsproject.Studio.Plugin.CompositeBlur
+              - com.obsproject.Studio.Plugin.AdvancedMasks
+              - com.obsproject.Studio.Plugin._3DEffect
+              - com.obsproject.Studio.Plugin.Shaderfilter

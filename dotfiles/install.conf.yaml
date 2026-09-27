@@ -1,0 +1,58 @@
+# dotbot-go (v0.4.2) configuration for the Zorin OS workstation.
+# Base directory = this directory (profiles/80-dotfiles.yaml passes -d explicitly).
+# Link sources starting with ../config/ point at the shared delegated-tool configs in the repo root.
+# Re-link after editing this file with:  just dotfiles   (or ./bootstrap.sh --only dotfiles)
+# Not linked on purpose: .config/vesktop/vencord-settings-backup.json (import it manually in Vencord).
+
+- defaults:
+    link:
+      relink: true
+      create: true
+      force: true
+
+- clean: ["~"]
+
+- clean:
+    ~/.config:
+      recursive: true
+
+- create:
+    - ~/Downloads
+    - ~/Projects
+    - ~/Apps
+    - ~/.local/bin
+    - ~/.vim/undo-history
+
+- shell:
+    - command -v conda >/dev/null 2>&1 && conda config --set changeps1 False || true
+
+- link:
+    ~/.zshrc: .zshrc
+    ~/.tmux.conf: .tmux.conf
+    ~/.ideavimrc: .ideavimrc
+    ~/.wezterm.lua: .wezterm.lua
+    ~/.hidden: .hidden
+    ~/system-update.sh: zorin-system-update.sh
+    ~/.config/starship.toml: starship.toml
+    ~/.config/alacritty/alacritty.toml: alacritty.toml
+    ~/.config/alacritty/theme.toml: alacritty_theme.toml
+    ~/.config/kitty/kitty.conf: kitty.conf
+    ~/.config/nvim: nvim
+    ~/.config/btop: .config/btop
+    ~/.config/ghostty: .config/ghostty
+    ~/.config/zathura/zathurarc: zathurarc
+    ~/.config/zellij/config.kdl: .config/zellij/config.kdl
+    ~/.config/zellij/layouts/default.kdl: .config/zellij/layouts/default.kdl
+    ~/.config/zellij/layouts/editor.kdl: .config/zellij/layouts/editor.kdl
+    ~/.config/zellij/layouts/media.kdl: .config/zellij/layouts/media.kdl
+    ~/.config/lazygit/config.yml: .config/lazygit/config.yml
+    ~/.config/lsd/config.yaml: .config/lsd/config.yaml
+    ~/.config/lsd/colors.yaml: .config/lsd/colors.yaml
+    ~/.config/yazi/yazi.toml: .config/yazi/yazi.toml
+    ~/.config/yazi/theme.toml: .config/yazi/theme.toml
+    ~/.config/yazi/keymap.toml: .config/yazi/keymap.toml
+    ~/.config/bottom/bottom.toml: .config/bottom/bottom.toml
+    ~/.config/xdg-terminals.list: .config/xdg-terminals.list
+    ~/.config/environment.d/90-session.conf: .config/environment.d/90-session.conf
+    ~/.config/binstaller/config.yaml: ../config/binstaller.yaml
+    ~/.config/nerd-fonts-installer/config.yaml: ../config/nerd-fonts/all.yaml

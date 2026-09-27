@@ -1,0 +1,90 @@
+# 80-dotfiles — link the dotfiles with dotbot, install tmux plugins, set up the broot launcher.
+#
+# Run alone:   ./bootstrap.sh --only dotfiles      (or: just dotfiles)
+#
+# Caveats:
+# - fluxion 0.3.1's `dotfiles-apply` kind is broken (it passes `--config`, dotbot-go v0.4.2 only
+#   accepts `-c/--config-file`), so dotbot is run from a `shell-scripts` step instead.
+# - The phase fingerprint covers the inline script only, NOT dotfiles/install.conf.yaml. After editing
+#   install.conf.yaml, re-link with `just dotfiles` (dotbot is idempotent, re-running is safe).
+# - dotbot runs with force: true, so pre-existing files/dirs at link targets (e.g. the oh-my-zsh
+#   template ~/.zshrc, an empty ~/.config/ghostty/) are replaced by symlinks into this repo.
+# - This profile runs late on purpose: installers that append to ~/.zshrc (sdkman, juliaup, pnpm, ...)
+#   have already run and edited the throwaway template, not the repo's dotfiles/.zshrc.
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: zorin-dotfiles
+  labels: { distro: zorin, module: dotfiles }
+spec:
+  target:
+    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+  vars:
+    repoDir: ${HOME}/.zorin-bootstrap
+  phases:
+    - name: host-check
+      steps:
+        - name: dotfiles-host-check
+          kind: assert
+          spec:
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
+            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+
+    - name: dotbot
+      description: "Symlink dotfiles/ into $HOME with dotbot-go (workaround for the broken dotfiles-apply kind)"
+      dependsOn: [host-check]
+      execution: { continueOnError: false }
+      steps:
+        - name: dotbot-apply
+          kind: shell-scripts
+          spec:
+            shell: bash
+            scripts:
+              - name: dotbot-apply
+                # Resolution order: dotbot on PATH -> binstaller copy in ~/.apps -> fluxion's verified
+                # pinned download (v0.4.2) in ~/.cache/fluxion/tools. No probe: dotbot is idempotent.
+                content: |
+                  set -euo pipefail
+                  if command -v dotbot >/dev/null 2>&1; then
+                    bin="$(command -v dotbot)"
+                  elif [ -x "$HOME/.apps/dotbot/bin/dotbot" ]; then
+                    bin="$HOME/.apps/dotbot/bin/dotbot"
+                  else
+                    fluxion tools install dotbot >/dev/null
+                    bin="$HOME/.cache/fluxion/tools/dotbot/v0.4.2/dotbot"
+                  fi
+                  "$bin" --version || true
+                  exec "$bin" -d "$1" -c "$1/install.conf.yaml"
+                args: ["${repoDir}/dotfiles"]
+                timeout: 10m
+
+    - name: tmux-plugins
+      description: "Install tmux plugins declared in ~/.tmux.conf via TPM (tmux from base, TPM from shell)"
+      dependsOn: [dotbot]
+      execution: { continueOnError: true }
+      steps:
+        - name: tmux-plugins-install
+          kind: commands
+          spec:
+            commands:
+              - name: tpm-install-plugins
+                run: '"$HOME/.tmux/plugins/tpm/bin/install_plugins"'
+                unless: "test -d $HOME/.tmux/plugins/tmux-sensible"
+                timeout: 5m
+            probeCommand: "test -d $HOME/.tmux/plugins/tmux-sensible"
+
+    - name: broot-launcher
+      description: "Write the broot `br` shell function (sourced, guarded, by .zshrc); no rc-file edits"
+      dependsOn: [host-check]
+      execution: { continueOnError: true }
+      steps:
+        - name: broot-launcher
+          kind: commands
+          spec:
+            commands:
+              - name: broot-br-function
+                # Written via a temp file so a failed/missing broot never leaves an empty `br` behind
+                # (which `creates:` would then treat as done).
+                run: 'd="$HOME/.config/broot/launcher/bash" && mkdir -p "$d" && broot --print-shell-function bash > "$d/br.tmp" && mv -f "$d/br.tmp" "$d/br" && broot --set-install-state installed'
+                creates: ${HOME}/.config/broot/launcher/bash/br
+            probeCommand: "test -s $HOME/.config/broot/launcher/bash/br"

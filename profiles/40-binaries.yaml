@@ -1,0 +1,124 @@
+# -----------------------------------------------------------------------------
+# 40-binaries.yaml  (fluxion state name: binaries)
+#
+# Standalone binaries and fonts, via the same delegated tools as the old repo:
+#   - worxbend/binstaller profile ../config/binstaller.yaml -> ~/.apps/<tool>
+#     (yazi, zig, minikube, xplr, kind, zellij, kubectl, neovide, neovim,
+#      lazygit, jujutsu, dotbot, yq)
+#   - root-owned /usr/local/bin/{nvim,neovim,vim} symlinks to ~/.apps/neovim
+#     (keeps `sudo nvim` / `sudo vim` working)
+#   - nerd-fonts-installer, 42 families split into 4 batches
+#     (../config/nerd-fonts/0N-*.yaml) because the kind has a fixed 15 min timeout.
+#
+# Run alone:   ./bootstrap.sh --only binaries
+# (also the way to refresh the `latest` binaries in ~/.apps later)
+#
+# Caveats:
+# - binstaller and nerd-fonts-installer are resolved by fluxion itself (PATH,
+#   then ~/.cache/fluxion/tools, then a download of the pinned, sha256-verified
+#   release: binstaller v0.2.0, nerd-fonts-installer v1.0.7).
+# - binstaller runs in `mode: developer`: tools resolved via `latest-url` have no
+#   pinned checksum. Sudo symlinks are disabled in the binstaller config; the
+#   root links are made by the `neovim-system-links` phase below instead
+#   (sudo is kept warm by bootstrap.sh).
+# - The font phases are independent leaves; one failed batch does not block the
+#   others. The same configs are dotbot-linked for manual reruns
+#   (~/.config/nerd-fonts-installer/config.yaml = all 42 families).
+# -----------------------------------------------------------------------------
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: zorin-binaries
+  labels: { distro: zorin, module: binaries }
+spec:
+  target:
+    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+  phases:
+    - name: host-check
+      steps:
+        - name: binaries-host-check
+          kind: assert
+          spec:
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
+            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+
+    # --- worxbend/binstaller ------------------------------------------------
+    - name: binstaller
+      description: "Developer binaries into ~/.apps via worxbend/binstaller"
+      dependsOn: [host-check]
+      steps:
+        - name: binaries-binstaller
+          kind: binstaller-profile
+          spec:
+            # installerVersion left unset: fluxion's pinned v0.2.0 is used.
+            config: ../config/binstaller.yaml
+            # Installed only when every one of the 13 executables is present.
+            probeCommand: "for f in yazi/bin/yazi zig/zig minikube/bin/minikube xplr/bin/xplr kind/bin/kind zellij/bin/zellij kubectl/bin/kubectl neovide/bin/neovide neovim/bin/nvim lazygit/bin/lazygit jujutsu/bin/jj dotbot/bin/dotbot yq/bin/yq; do test -x \"$HOME/.apps/$f\" || exit 1; done"
+
+    - name: neovim-system-links
+      description: "Root-owned /usr/local/bin/{nvim,neovim,vim} -> ~/.apps/neovim/bin/nvim"
+      dependsOn: [host-check, binstaller]
+      steps:
+        # /usr/bin is dpkg-owned and deliberately left alone.
+        - name: binaries-nvim-links
+          kind: shell-scripts
+          spec:
+            shell: bash
+            scripts:
+              - name: nvim-links
+                content: |
+                  set -euo pipefail
+                  nvim="$1/.apps/neovim/bin/nvim"
+                  test -x "$nvim"
+                  for n in nvim neovim vim; do
+                    ln -sfn "$nvim" "/usr/local/bin/$n"
+                  done
+                args: ["${HOME}"]
+                sudo: true
+                timeout: 2m
+            probeCommand: "test -L /usr/local/bin/nvim && test -L /usr/local/bin/vim"
+
+    # --- Nerd Fonts (4 independent leaf batches) ------------------------------
+    - name: fonts-core
+      description: "Terminal-critical Nerd Fonts (VictorMono, FiraCode, JetBrainsMono, ...)"
+      dependsOn: [host-check]
+      execution: { continueOnError: true }
+      steps:
+        - name: nerd-fonts-core
+          kind: nerd-fonts
+          spec:
+            config: ../config/nerd-fonts/01-core.yaml
+            probeCommand: "fc-list | grep -qi 'VictorMono Nerd'"
+
+    - name: fonts-more
+      description: "Second batch of Nerd Fonts (14 families)"
+      dependsOn: [host-check]
+      execution: { continueOnError: true }
+      steps:
+        - name: nerd-fonts-more
+          kind: nerd-fonts
+          spec:
+            config: ../config/nerd-fonts/02-more.yaml
+            probeCommand: "fc-list | grep -qi 'Mononoki Nerd'"
+
+    - name: fonts-rest
+      description: "Remaining Nerd Fonts (13 families)"
+      dependsOn: [host-check]
+      execution: { continueOnError: true }
+      steps:
+        - name: nerd-fonts-rest
+          kind: nerd-fonts
+          spec:
+            config: ../config/nerd-fonts/03-rest.yaml
+            probeCommand: "fc-list | grep -qi 'Lilex Nerd'"
+
+    - name: fonts-noto
+      description: "Noto Nerd Font (large download, own batch)"
+      dependsOn: [host-check]
+      execution: { continueOnError: true }
+      steps:
+        - name: nerd-fonts-noto
+          kind: nerd-fonts
+          spec:
+            config: ../config/nerd-fonts/04-noto.yaml
+            probeCommand: "fc-list | grep -qi 'Noto.*Nerd'"

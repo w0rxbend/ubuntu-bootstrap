@@ -1,0 +1,177 @@
+# 10-apps.yaml -- module "apps"
+#
+# Third-party desktop/CLI apps that were installed by hand on this host, reproduced
+# declaratively. Every app is its own leaf phase, so one broken vendor repo never blocks
+# the others:
+#   gh (GitHub CLI repo), claude-desktop (Anthropic repo), VS Code (Microsoft repo),
+#   1Password (1Password repo), ChatGPT desktop (.deb), fastfetch (.deb from GitHub).
+#
+# Run alone:   ./bootstrap.sh --only apps
+# Caveats:
+#   - gh and claude-desktop use apt-repository and write the SAME .list files that already
+#     exist on this host, so they are overwritten rather than duplicated. Fluxion always
+#     `gpg --dearmor`s keys, therefore the claude-desktop keyring is a .gpg file (the host's
+#     old .asc keyring becomes unused and is harmless).
+#   - VS Code and 1Password keep their vendor deb822 .sources files (their package postinst
+#     scripts own them). They are written byte-identical to what the packages write, with the
+#     keys installed by gpg-key at the same keyring paths, so apt never sees conflicting
+#     Signed-By values.
+#   - file-writes steps are probed by existence only: with --skip-already-installed an
+#     existing .sources file is left untouched even if its content differs.
+#   - ChatGPT has no public key URL (the key ships inside the .deb, whose postinst adds
+#     chatgpt.sources), so it is installed from the vendor .deb; later updates come via apt.
+#   - fastfetch is not in the noble archive; the upstream .deb is installed (update it by
+#     re-running with --re-probe after removing it, or via the upstream release page).
+#   - Brave is a Zorin default and is intentionally not managed here.
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: zorin-apps
+  labels: { distro: zorin, module: apps }
+spec:
+  target:
+    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+  phases:
+    - name: host-check
+      description: "Refuse to run anywhere but Zorin OS 18 / Ubuntu 24.04 noble"
+      steps:
+        - name: apps-host-check
+          kind: assert
+          spec:
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
+            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+
+    - name: gh
+      description: "GitHub CLI from cli.github.com"
+      dependsOn: [host-check]
+      execution: { continueOnError: false }
+      steps:
+        - name: apps-gh-repo
+          kind: apt-repository
+          spec:
+            source: deb [arch=amd64 signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main
+            sourceList: /etc/apt/sources.list.d/github-cli.list
+            signingKeyUrl: https://cli.github.com/packages/githubcli-archive-keyring.gpg
+            keyring: /etc/apt/keyrings/githubcli-archive-keyring.gpg
+            checksum: { algorithm: sha256, value: 6084d5d7bd8e288441e0e94fc6275570895da18e6751f70f057485dc2d1a811b }
+        - name: apps-gh
+          kind: apt-packages
+          spec:
+            packages: [gh]
+
+    - name: claude-desktop
+      description: "Claude desktop app from downloads.claude.ai (pulls in qemu/ovmf/virtiofsd)"
+      dependsOn: [host-check]
+      execution: { continueOnError: false }
+      steps:
+        - name: apps-claude-desktop-repo
+          kind: apt-repository
+          spec:
+            source: deb [arch=amd64 signed-by=/usr/share/keyrings/claude-desktop-archive-keyring.gpg] https://downloads.claude.ai/claude-desktop/apt/stable stable main
+            sourceList: /etc/apt/sources.list.d/claude-desktop.list
+            signingKeyUrl: https://downloads.claude.ai/claude-desktop/key.asc
+            keyring: /usr/share/keyrings/claude-desktop-archive-keyring.gpg
+            checksum: { algorithm: sha256, value: bd70a5e4a268002704024ceba7f8446024114e94f3f0bdd11c23a9e592be81c6 }
+        - name: apps-claude-desktop
+          kind: apt-packages
+          spec:
+            packages: [claude-desktop]
+
+    - name: vscode
+      description: "Visual Studio Code from packages.microsoft.com (deb822 source, same as the package writes)"
+      dependsOn: [host-check]
+      execution: { continueOnError: false }
+      steps:
+        - name: apps-vscode-key
+          kind: gpg-key
+          spec:
+            keys:
+              - url: https://packages.microsoft.com/keys/microsoft.asc
+                fingerprint: BC528686B50D79E339D3721CEB3E94ADBE1229CF
+                keyring: /usr/share/keyrings/microsoft.gpg
+        - name: apps-vscode-source
+          kind: file-writes
+          spec:
+            files:
+              - name: vscode.sources
+                destination: /etc/apt/sources.list.d/vscode.sources
+                mode: "0644"
+                content: |
+                  ### THIS FILE IS AUTOMATICALLY CONFIGURED ###
+                  # You may comment out this entry, but any other modifications may be lost.
+                  Types: deb
+                  URIs: https://packages.microsoft.com/repos/code
+                  Suites: stable
+                  Components: main
+                  Architectures: amd64
+                  Signed-By: /usr/share/keyrings/microsoft.gpg
+        - name: apps-vscode
+          kind: apt-packages
+          spec:
+            actions: [update]
+            packages: [code]
+
+    - name: onepassword
+      description: "1Password desktop app from downloads.1password.com (deb822 source, same as the package writes)"
+      dependsOn: [host-check]
+      execution: { continueOnError: false }
+      steps:
+        - name: apps-1password-key
+          kind: gpg-key
+          spec:
+            keys:
+              - url: https://downloads.1password.com/linux/keys/1password.asc
+                fingerprint: 3FEF9748469ADBE15DA7CA80AC2D62742012EA22
+                keyring: /usr/share/keyrings/1password-archive-keyring.gpg
+        - name: apps-1password-source
+          kind: file-writes
+          spec:
+            files:
+              - name: 1password.sources
+                destination: /etc/apt/sources.list.d/1password.sources
+                mode: "0644"
+                content: |
+                  # This file is automatically added and configured by the 1Password package. Modifications may be overwritten.
+                  Types: deb
+                  URIs: https://downloads.1password.com/linux/debian/amd64
+                  Suites: stable
+                  Components: main
+                  Architectures: amd64
+                  Signed-By: /usr/share/keyrings/1password-archive-keyring.gpg
+        - name: apps-1password
+          kind: apt-packages
+          spec:
+            actions: [update]
+            packages: [1password]
+
+    - name: chatgpt
+      description: "ChatGPT desktop app (.deb; its postinst adds chatgpt.sources for updates)"
+      dependsOn: [host-check]
+      execution: { continueOnError: false }
+      steps:
+        - name: apps-chatgpt
+          kind: commands
+          spec:
+            commands:
+              - name: chatgpt-deb
+                sudo: true
+                timeout: 15m
+                unless: "dpkg -s chatgpt >/dev/null 2>&1"
+                run: 'set -euo pipefail; d=$(mktemp -d); trap ''find "$d" -delete'' EXIT; curl -fsSL -o "$d/chatgpt_amd64.deb" https://persistent.oaistatic.com/codex-app-prod/linux/deb/latest/chatgpt_amd64.deb; chmod 0755 "$d"; chmod 0644 "$d/chatgpt_amd64.deb"; apt-get install -y "$d/chatgpt_amd64.deb"'
+            probeCommand: "dpkg -s chatgpt >/dev/null 2>&1"
+
+    - name: fastfetch
+      description: "fastfetch (.deb from the upstream GitHub release; not in the noble archive)"
+      dependsOn: [host-check]
+      execution: { continueOnError: false }
+      steps:
+        - name: apps-fastfetch
+          kind: commands
+          spec:
+            commands:
+              - name: fastfetch-deb
+                sudo: true
+                timeout: 10m
+                unless: "dpkg -s fastfetch >/dev/null 2>&1"
+                run: 'set -euo pipefail; d=$(mktemp -d); trap ''find "$d" -delete'' EXIT; curl -fsSL -o "$d/fastfetch-linux-amd64.deb" https://github.com/fastfetch-cli/fastfetch/releases/latest/download/fastfetch-linux-amd64.deb; chmod 0755 "$d"; chmod 0644 "$d/fastfetch-linux-amd64.deb"; apt-get install -y "$d/fastfetch-linux-amd64.deb"'
+            probeCommand: "dpkg -s fastfetch >/dev/null 2>&1"

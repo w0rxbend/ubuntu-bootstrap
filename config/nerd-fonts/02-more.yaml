@@ -1,0 +1,20 @@
+# Nerd Fonts batch 2/4 (fluxion step nerd-fonts-more, profiles/40-binaries.yaml).
+# nerd-fonts-installer v1.0.7 config. Installs into ~/.local/share/fonts/NerdFonts.
+release: latest
+destination: ~/.local/share/fonts/NerdFonts
+refresh_font_cache: true
+families:
+  - MPlus
+  - Terminus
+  - FantasqueSansMono
+  - HeavyData
+  - "3270"
+  - LiberationMono
+  - RobotoMono
+  - Mononoki
+  - DroidSansMono
+  - Monoid
+  - SpaceMono
+  - ComicShannsMono
+  - DaddyTimeMono
+  - CodeNewRoman

@@ -1,0 +1,390 @@
+# 00-base.yaml -- module "base"
+#
+# Brings Zorin OS 18 (Ubuntu 24.04 noble) up to the package baseline of the old
+# Fedora/Arch workstation, using only the Ubuntu/Zorin archive:
+#   - full apt upgrade
+#   - debconf preseeds (mscorefonts EULA, wireshark setuid) so installs never hang
+#   - core, CLI, build, debug, GUI-dev, media, fonts/TeX, desktop and virtualization packages
+#   - bat -> batcat symlink, libvirtd service, global git identity, NTP clock
+#
+# Run alone:   ./bootstrap.sh --only base
+# Caveats:
+#   - Every package list is a leaf phase: one failed package fails only its own phase
+#     and blocks nothing else. Re-run with --skip-already-installed to retry.
+#   - Deliberately NOT installed from apt (provided elsewhere or too old): neovim, yq,
+#     fd-find, kitty, docker.io, podman*, gnome-shell-extension-manager.
+#   - The libvirt/kvm group membership is handled in 90-session (needs a re-login).
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: zorin-base
+  labels: { distro: zorin, module: base }
+spec:
+  target:
+    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+  phases:
+    - name: host-check
+      description: "Refuse to run anywhere but Zorin OS 18 / Ubuntu 24.04 noble"
+      steps:
+        - name: base-host-check
+          kind: assert
+          spec:
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
+            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+
+    - name: system-upgrade
+      description: "apt-get update + full-upgrade (declared first so it runs first in its wave)"
+      dependsOn: [host-check]
+      steps:
+        - name: base-full-upgrade
+          kind: system-update
+          spec:
+            packageManager: apt
+            distUpgrade: true
+            timeout: PT1H
+
+    - name: apt-core
+      description: "debconf preseeds and the core packages every other phase relies on"
+      dependsOn: [host-check]
+      execution: { continueOnError: false }
+      steps:
+        - name: base-debconf-preseed
+          kind: commands
+          description: "Pre-answer debconf questions (fluxion does not set DEBIAN_FRONTEND)"
+          spec:
+            commands:
+              - name: mscorefonts-eula
+                run: "echo 'ttf-mscorefonts-installer msttcorefonts/accepted-mscorefonts-eula boolean true' | debconf-set-selections"
+                sudo: true
+              - name: wireshark-setuid
+                run: "echo 'wireshark-common wireshark-common/install-setuid boolean false' | debconf-set-selections"
+                sudo: true
+            probeCommand: "debconf-show ttf-mscorefonts-installer 2>/dev/null | grep -q 'accepted-mscorefonts-eula: true' && debconf-show wireshark-common 2>/dev/null | grep -q 'install-setuid: false'"
+        - name: base-core-packages
+          kind: apt-packages
+          spec:
+            actions: [update]
+            packages:
+              - ca-certificates
+              - curl
+              - wget
+              - gnupg
+              - git
+              - zsh
+              - unzip
+              - zip
+              - xz-utils
+              - fontconfig
+              - fuse3
+              - libfuse2t64
+              - software-properties-common
+              - debconf-utils
+              - apt-transport-https
+
+    - name: apt-cli
+      description: "Terminal tools (leaf)"
+      dependsOn: [host-check, apt-core]
+      execution: { continueOnError: true }
+      steps:
+        - name: base-cli-packages
+          kind: apt-packages
+          spec:
+            packages:
+              - alacritty
+              - bat
+              - btop
+              - fzf
+              - htop
+              - tmux
+              - wl-clipboard
+              - jq
+              - net-tools
+              - hyperfine
+              - asciinema
+              - gdu
+              - xsensors
+              - lm-sensors
+              - stress
+              - zoxide
+              - tig
+              - mtr
+              - nmap
+              - httpie
+              - ripgrep
+              - pipx
+              - stacer
+              - tree
+              - mediainfo
+              - libimage-exiftool-perl
+              - imagemagick
+              - poppler-utils
+              - ffmpegthumbnailer
+              - 7zip
+              - python3-venv
+              - python3-pip
+              - python3-dev
+        - name: base-bat-symlink
+          kind: commands
+          description: "Ubuntu ships bat as batcat; expose it as ~/.local/bin/bat"
+          spec:
+            commands:
+              - name: bat
+                run: 'mkdir -p "$HOME/.local/bin" && ln -sfn /usr/bin/batcat "$HOME/.local/bin/bat"'
+                creates: "${HOME}/.local/bin/bat"
+            probeCommand: "test -L $HOME/.local/bin/bat"
+
+    - name: apt-build
+      description: "Compilers, build systems and headers (also the pyenv build deps) (leaf)"
+      dependsOn: [host-check, apt-core]
+      execution: { continueOnError: true }
+      steps:
+        - name: base-build-packages
+          kind: apt-packages
+          spec:
+            packages:
+              - build-essential
+              - gcc
+              - g++
+              - pkg-config
+              - clang
+              - clangd
+              - clang-format
+              - clang-tidy
+              - clang-tools
+              - llvm
+              - llvm-dev
+              - libclang-dev
+              - libclang-rt-dev
+              - lld
+              - lldb
+              - make
+              - cmake
+              - meson
+              - ninja-build
+              - ccache
+              - flex
+              - bison
+              - gperf
+              - libreadline-dev
+              - libffi-dev
+              - libssl-dev
+              - openssl
+              - dfu-util
+              - zlib1g-dev
+              - libbz2-dev
+              - libsqlite3-dev
+              - liblzma-dev
+              - tk-dev
+              - libncurses-dev
+              - libxml2-dev
+              - libxmlsec1-dev
+              - libsecret-1-0
+              - libsecret-1-dev
+              - libsecret-tools
+
+    - name: apt-debug
+      description: "Debuggers, tracers and profilers (leaf)"
+      dependsOn: [host-check, apt-core]
+      execution: { continueOnError: true }
+      steps:
+        - name: base-debug-packages
+          kind: apt-packages
+          spec:
+            packages:
+              - gdb
+              - valgrind
+              - strace
+              - ltrace
+              - linux-tools-common
+              - linux-tools-generic-hwe-24.04
+              - tshark
+              - protobuf-compiler
+
+    - name: apt-gui-dev
+      description: "GTK/WebKit/X11/Mesa development headers (neovide, GUI toolkits) (leaf)"
+      dependsOn: [host-check, apt-core]
+      execution: { continueOnError: true }
+      steps:
+        - name: base-gui-dev-packages
+          kind: apt-packages
+          spec:
+            packages:
+              - libgtk-3-dev
+              - libgtk-4-1
+              - libgtk-4-dev
+              - gobject-introspection
+              - libgirepository1.0-dev
+              - libgirepository-2.0-dev
+              - libwebkitgtk-6.0-dev
+              - libxcursor-dev
+              - libxrandr-dev
+              - libxi-dev
+              - libxinerama-dev
+              - libxxf86vm-dev
+              - libx11-dev
+              - libxext-dev
+              - libxft-dev
+              - libxrender-dev
+              - libxfixes-dev
+              - libgl1-mesa-dev
+              - libgl-dev
+              - libgbm-dev
+              - libegl-dev
+              - libgl1-mesa-dri
+              - libegl-mesa0
+              - mesa-utils
+              - mesa-vdpau-drivers
+
+    - name: apt-media
+      description: "Players, codecs, VA-API, PipeWire, restricted extras, v4l2loopback (leaf)"
+      dependsOn: [host-check, apt-core]
+      execution: { continueOnError: true }
+      steps:
+        # radeontop: this host has an AMD RX 4xx/5xx GPU; the Intel VA driver is omitted on purpose.
+        - name: base-media-packages
+          kind: apt-packages
+          spec:
+            packages:
+              - vlc
+              - mpv
+              - imv
+              - ffmpeg
+              - libavcodec-dev
+              - libavformat-dev
+              - libavutil-dev
+              - libswscale-dev
+              - libavfilter-dev
+              - libavdevice-dev
+              - libswresample-dev
+              - gstreamer1.0-vaapi
+              - gstreamer1.0-plugins-base
+              - gstreamer1.0-plugins-good
+              - gstreamer1.0-plugins-bad
+              - gstreamer1.0-plugins-ugly
+              - gstreamer1.0-libav
+              - gstreamer1.0-pipewire
+              - libopenh264-7
+              - libva2
+              - vainfo
+              - mesa-va-drivers
+              - libvdpau-va-gl1
+              - radeontop
+              - pipewire
+              - pipewire-alsa
+              - pipewire-pulse
+              - pipewire-jack
+              - wireplumber
+              - easyeffects
+              - power-profiles-daemon
+              - upower
+        # Own step so a failed mscorefonts download is obvious in the report.
+        # The EULA is preseeded in apt-core (base-debconf-preseed).
+        - name: base-restricted-extras
+          kind: apt-packages
+          spec:
+            packages:
+              - ubuntu-restricted-extras
+        # DKMS module built against the HWE kernel; used by the droidcam alias in .zshrc.
+        - name: base-v4l2loopback
+          kind: apt-packages
+          spec:
+            packages:
+              - linux-headers-generic-hwe-24.04
+              - v4l2loopback-dkms
+              - v4l2loopback-utils
+
+    - name: apt-fonts-tex
+      description: "Distro fonts and a TeX Live subset (leaf; Nerd Fonts come from 40-binaries)"
+      dependsOn: [host-check, apt-core]
+      execution: { continueOnError: true }
+      steps:
+        - name: base-fonts-packages
+          kind: apt-packages
+          spec:
+            packages:
+              - fonts-firacode
+              - fonts-font-awesome
+              - fonts-noto-core
+              - fonts-noto-color-emoji
+              - fonts-roboto
+        - name: base-tex-packages
+          kind: apt-packages
+          spec:
+            packages:
+              - texlive-base
+              - texlive-latex-base
+              - texlive-latex-recommended
+              - texlive-fonts-recommended
+              - texlive-xetex
+
+    - name: apt-desktop
+      description: "GNOME tooling, keyring, portals and document viewers (leaf)"
+      dependsOn: [host-check, apt-core]
+      execution: { continueOnError: true }
+      steps:
+        - name: base-desktop-packages
+          kind: apt-packages
+          spec:
+            packages:
+              - gnome-tweaks
+              - gnome-shell-extension-prefs
+              - gnome-shell-extensions
+              - gnome-browser-connector
+              - xdg-desktop-portal-gtk
+              - gnome-keyring
+              - libpam-gnome-keyring
+              - seahorse
+              - gcr
+              - gcr4
+              - zathura
+              - zathura-pdf-poppler
+              - mupdf
+
+    - name: apt-virt
+      description: "QEMU/KVM + libvirt + virt-manager, then enable libvirtd (leaf)"
+      dependsOn: [host-check, apt-core]
+      execution: { continueOnError: false }
+      steps:
+        - name: base-virt-packages
+          kind: apt-packages
+          spec:
+            packages:
+              - qemu-system-x86
+              - qemu-utils
+              - ovmf
+              - libvirt-daemon-system
+              - libvirt-clients
+              - virtinst
+              - virt-manager
+              - bridge-utils
+              - dnsmasq-base
+              - vde2
+              - netcat-openbsd
+              - cpu-checker
+        - name: base-libvirtd
+          kind: systemd-unit
+          spec:
+            scope: system
+            units:
+              - { name: libvirtd, enabled: true, state: started }
+
+    - name: config
+      description: "Global git identity/defaults and clock settings (git and timedatectl ship with Zorin)"
+      dependsOn: [host-check]
+      steps:
+        - name: base-git-config
+          kind: git-config
+          spec:
+            scope: global
+            entries:
+              user.email: balyszyn@gmail.com
+              user.name: w0rxbend
+              pull.rebase: "true"
+              init.defaultBranch: main
+              core.autocrlf: input
+        - name: base-clock
+          kind: system-setting
+          description: "NTP on, RTC in UTC (timezone left untouched)"
+          spec:
+            ntp: true
+            localRtc: false

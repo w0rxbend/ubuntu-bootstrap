@@ -1,0 +1,157 @@
+# 50-shell.yaml - module "shell"
+#
+# Interactive shell and terminal layer:
+#   - oh-my-zsh (pinned revision + installer digest)
+#   - zsh plugins (syntax-highlighting, autosuggestions, history-substring-search) at pinned commits
+#   - tmux plugin manager (TPM) clone; the plugins themselves are installed by 80-dotfiles
+#     after .tmux.conf is linked
+#   - starship prompt into ~/.local/bin
+#   - kitty from the upstream kitty.app installer, plus the desktop integration steps the user
+#     ran by hand on this host (symlinks, .desktop files with absolute Exec/Icon paths)
+#   - ghostty (classic snap)
+#
+# Run alone:  ./bootstrap.sh --only shell
+#
+# Caveats:
+#   - zsh itself is installed by 00-base; the login shell is switched in 90-session.
+#   - The oh-my-zsh installer exits non-zero when ~/.oh-my-zsh already exists, so always apply
+#     with --skip-already-installed (bootstrap.sh does) so the typed path probe skips it.
+#     On a fresh host it moves ~/.zshrc aside and writes its template; 80-dotfiles later
+#     force-replaces ~/.zshrc with the repo symlink.
+#   - git-repo never pulls/resets: an existing plugin checkout at another commit is reported as
+#     a failure of the zsh-plugins phase. Delete the directory (or bump the ref) and re-run.
+#   - ~/.config/xdg-terminals.list is managed by dotbot (80-dotfiles), not here.
+#   - The ghostty snap needs a warm sudo ticket (sudo -v); bootstrap.sh takes care of that.
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: zorin-shell
+  labels: { distro: zorin, module: shell }
+spec:
+  target:
+    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+  phases:
+    - name: host-check
+      description: "Refuse to run anywhere but Zorin OS 18 / Ubuntu 24.04 noble"
+      steps:
+        - name: shell-host-check
+          kind: assert
+          spec:
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
+            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+
+    - name: oh-my-zsh
+      description: "oh-my-zsh framework (already present on this host; skipped by the typed probe)"
+      dependsOn: [host-check]
+      execution: { continueOnError: false }
+      steps:
+        - name: oh-my-zsh
+          kind: oh-my-zsh
+          spec:
+            revision: 74965c96098134b192f00084f966b4b02438a739
+            sha256: 5574b96e94dbcb769f0d1592fa83aeb6ca2caf41c6ae5d76fcc7f04c524b4f55
+            probeCommand: "test -d $HOME/.oh-my-zsh"
+
+    - name: zsh-plugins
+      description: "Custom oh-my-zsh plugins referenced by dotfiles/.zshrc"
+      dependsOn: [host-check, oh-my-zsh]
+      execution: { continueOnError: true }
+      steps:
+        - name: zsh-plugins
+          kind: git-repo
+          spec:
+            repos:
+              - url: https://github.com/zsh-users/zsh-syntax-highlighting.git
+                dest: ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
+                ref: 0bfcb582e71d3abe604ce67bc0fe5a21f377507e
+                depth: 1
+              - url: https://github.com/zsh-users/zsh-autosuggestions.git
+                dest: ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions
+                ref: 85919cd1ffa7d2d5412f6d3fe437ebdbeeec4fc5
+                depth: 1
+              - url: https://github.com/zsh-users/zsh-history-substring-search.git
+                dest: ~/.oh-my-zsh/custom/plugins/zsh-history-substring-search
+                ref: a0bdb0d47dbaba31dba2db7af8c48a5d9c74049a
+                depth: 1
+
+    - name: tmux-tpm
+      description: "tmux plugin manager (plugins are installed by 80-dotfiles)"
+      dependsOn: [host-check]
+      steps:
+        - name: tmux-tpm
+          kind: git-repo
+          spec:
+            repos:
+              - url: https://github.com/tmux-plugins/tpm.git
+                dest: ~/.tmux/plugins/tpm
+                ref: e261deb1b47614eed3400089ce7197dc68acc4eb
+                depth: 1
+
+    - name: starship
+      description: "starship prompt into ~/.local/bin"
+      dependsOn: [host-check]
+      steps:
+        - name: starship
+          kind: commands
+          spec:
+            commands:
+              - name: starship-install
+                run: 'mkdir -p "$HOME/.local/bin" && curl -sS https://starship.rs/install.sh | sh -s -- -y -b "$HOME/.local/bin"'
+                creates: ${HOME}/.local/bin/starship
+                timeout: 5m
+            probeCommand: "test -x $HOME/.local/bin/starship"
+
+    - name: kitty
+      description: "kitty.app from the upstream installer + desktop integration (as done by hand on this host)"
+      dependsOn: [host-check]
+      execution: { continueOnError: false }
+      steps:
+        - name: kitty-install
+          kind: commands
+          spec:
+            commands:
+              - name: kitty-installer
+                run: "curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin launch=n"
+                creates: ${HOME}/.local/kitty.app/bin/kitty
+                timeout: 10m
+            probeCommand: "test -x $HOME/.local/kitty.app/bin/kitty"
+        - name: kitty-desktop-integration
+          kind: shell-scripts
+          spec:
+            shell: bash
+            scripts:
+              - name: kitty-desktop-integration
+                content: |
+                  set -euo pipefail
+                  app="$HOME/.local/kitty.app"
+                  apps_dir="$HOME/.local/share/applications"
+                  mkdir -p "$HOME/.local/bin" "$apps_dir"
+                  # kitty + kitten on PATH
+                  ln -sf "$app/bin/kitty" "$app/bin/kitten" "$HOME/.local/bin/"
+                  # launcher entries (kitty-open lets the file manager open text/images in kitty)
+                  cp "$app/share/applications/kitty.desktop" "$apps_dir/"
+                  cp "$app/share/applications/kitty-open.desktop" "$apps_dir/"
+                  # absolute Exec/Icon paths so the launcher works without ~/.local/bin on the session PATH
+                  sed -i "s|Icon=kitty|Icon=$app/share/icons/hicolor/256x256/apps/kitty.png|g" "$apps_dir"/kitty*.desktop
+                  sed -i "s|Exec=kitty|Exec=$app/bin/kitty|g" "$apps_dir"/kitty*.desktop
+                  if command -v update-desktop-database >/dev/null 2>&1; then
+                    update-desktop-database "$apps_dir" || true
+                  fi
+                unless: "grep -q kitty.app $HOME/.local/share/applications/kitty.desktop"
+                timeout: 2m
+            probeCommand: "grep -q kitty.app $HOME/.local/share/applications/kitty.desktop"
+
+    - name: ghostty
+      description: "ghostty terminal (classic snap, as installed on this host)"
+      dependsOn: [host-check]
+      steps:
+        - name: ghostty
+          kind: commands
+          spec:
+            commands:
+              - name: ghostty-snap
+                run: "snap install ghostty --classic"
+                sudo: true
+                unless: "snap list ghostty >/dev/null 2>&1"
+                timeout: 15m
+            probeCommand: "snap list ghostty >/dev/null 2>&1"

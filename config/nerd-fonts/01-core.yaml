@@ -1,0 +1,22 @@
+# Nerd Fonts batch 1/4 (fluxion step nerd-fonts-core, profiles/40-binaries.yaml).
+# Terminal-critical families first: VictorMono (alacritty, ghostty, wezterm),
+# FiraCode (kitty), JetBrainsMono, symbols-only fallback.
+# nerd-fonts-installer v1.0.7 config. Installs into ~/.local/share/fonts/NerdFonts.
+release: latest
+destination: ~/.local/share/fonts/NerdFonts
+refresh_font_cache: true
+families:
+  - JetBrainsMono
+  - VictorMono
+  - FiraCode
+  - FiraMono
+  - NerdFontsSymbolsOnly
+  - CascadiaCode
+  - Meslo
+  - Hack
+  - SourceCodePro
+  - UbuntuMono
+  - Ubuntu
+  - ZedMono
+  - GeistMono
+  - CommitMono

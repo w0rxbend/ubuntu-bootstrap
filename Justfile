@@ -1,0 +1,121 @@
+# Justfile for ~/.zorin-bootstrap (fluxion workstation bootstrap for Zorin OS 18 / Ubuntu noble).
+#
+# `just` is installed by the `toolchains` module (cargo-binstall), so on a fresh host start with
+# ./bootstrap.sh. Afterwards these recipes are shortcuts for it.
+
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+home := env_var("HOME")
+
+# Same PATH that bootstrap.sh exports, so fluxion/dotbot resolve identically.
+
+export PATH := home + "/.cargo/bin:" + home + "/.local/bin:" + home + "/.go/bin:" + home + "/.go-workspace/bin:" + home + "/.apps/dotbot/bin:" + home + "/.apps/neovim/bin:" + home + "/.apps/yq/bin:" + home + "/.local/share/pnpm:" + home + "/.juliaup/bin:" + env_var("PATH")
+
+# List available recipes
+default:
+    @just --list --unsorted
+
+# --- Whole bootstrap -----------------------------------------------------------------------
+
+# Run the full default sequence (asks for the sudo password once)
+bootstrap *FLAGS:
+    ./bootstrap.sh {{ FLAGS }}
+
+# Show what the full sequence would do (no sudo, no changes)
+dry-run *FLAGS:
+    ./bootstrap.sh --dry-run {{ FLAGS }}
+
+# validate --strict + lint every profile, bash -n every script (read-only)
+validate:
+    scripts/validate-all.sh
+
+# List modules in run order
+list:
+    ./bootstrap.sh --list
+
+# --- Single modules ------------------------------------------------------------------------
+
+# Apply one or more modules, e.g. `just apply toolchains` or `just apply shell,dotfiles`
+apply NAME *FLAGS:
+    ./bootstrap.sh --only {{ NAME }} {{ FLAGS }}
+
+# Resume the default sequence at NAME
+from NAME *FLAGS:
+    ./bootstrap.sh --from {{ NAME }} {{ FLAGS }}
+
+# Dry-run one or more modules
+dry NAME:
+    ./bootstrap.sh --dry-run --only {{ NAME }}
+
+# Execution plan (tree) for one or more modules
+plan NAME:
+    ./bootstrap.sh --plan --only {{ NAME }}
+
+# Live probe summary for every default module (or: just status base,docker)
+status NAMES="":
+    if [ -n "{{ NAMES }}" ]; then ./bootstrap.sh --status --only {{ NAMES }}; else ./bootstrap.sh --status; fi
+
+# Missing/failed items per module (or: just failed docker)
+failed NAMES="":
+    if [ -n "{{ NAMES }}" ]; then ./bootstrap.sh --failed --only {{ NAMES }}; else ./bootstrap.sh --failed; fi
+
+# Print the recorded fluxion state of a module
+state NAME:
+    fluxion state show {{ NAME }}
+
+# Forget everything fluxion recorded for a module (next run re-probes and re-runs it)
+state-reset NAME:
+    fluxion state reset {{ NAME }} --force
+
+# --- Dotfiles ------------------------------------------------------------------------------
+
+# Re-link dotfiles directly with dotbot-go (use after editing dotfiles/install.conf.yaml)
+dotfiles:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if command -v dotbot >/dev/null 2>&1; then
+        bin="$(command -v dotbot)"
+    elif [ -x "$HOME/.apps/dotbot/bin/dotbot" ]; then
+        bin="$HOME/.apps/dotbot/bin/dotbot"
+    elif [ -x "$HOME/.cache/fluxion/tools/dotbot/v0.4.2/dotbot" ]; then
+        bin="$HOME/.cache/fluxion/tools/dotbot/v0.4.2/dotbot"
+    else
+        echo "dotbot not found; run: just apply binaries   (or: fluxion tools install dotbot)" >&2
+        exit 1
+    fi
+    "$bin" -d "{{ justfile_directory() }}/dotfiles" -c "{{ justfile_directory() }}/dotfiles/install.conf.yaml"
+
+# Preview dotbot changes without touching $HOME
+dotfiles-dry:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    bin="$(command -v dotbot || echo "$HOME/.apps/dotbot/bin/dotbot")"
+    "$bin" -n -d "{{ justfile_directory() }}/dotfiles" -c "{{ justfile_directory() }}/dotfiles/install.conf.yaml"
+
+# --- Maintenance ---------------------------------------------------------------------------
+
+# Update everything (apt, snap, flatpak, rustup, sdkman, nvm, ...) via ~/system-update.sh
+update:
+    "$HOME/system-update.sh"
+
+# --- Optional modules ----------------------------------------------------------------------
+
+# OBS Studio + plugins (flatpak)
+obs:
+    ./bootstrap.sh --only obs
+
+# Zorin OS Pro flatpak set (for Zorin Core or a reinstall without Pro)
+pro-parity:
+    ./bootstrap.sh --only zorin-pro-parity
+
+# Extra GNOME Shell extensions via gext
+gnome-extensions:
+    ./bootstrap.sh --only gnome-extensions
+
+# Wallpapers from the old system-bootstrap repo (~109 MB)
+wallpapers:
+    ./bootstrap.sh --only wallpapers
+
+# Verification + manual-step reminders (run after logging back in)
+post-checks:
+    ./bootstrap.sh --only post-checks

@@ -1,0 +1,111 @@
+# 20-docker.yaml -- module "docker"
+#
+# Docker Engine from Docker's official apt repository, INSTEAD of podman (the old
+# Fedora/Arch setup used podman, podman-docker, toolbox and buildah; none are installed here):
+#   - removes distro packages that conflict with docker-ce (only if any are installed)
+#   - adds https://download.docker.com/linux/ubuntu (noble, stable) with a pinned key digest
+#   - installs docker-ce, docker-ce-cli, containerd.io, buildx and the compose v2 plugin
+#   - enables and starts docker.service and containerd.service
+#   - installs distrobox (the toolbox replacement) from its pinned upstream release into
+#     ~/.local; it uses docker automatically
+#
+# Run alone:   ./bootstrap.sh --only docker
+# Caveats:
+#   - Adding the user to the "docker" group is done in 90-session (needs a logout/login).
+#     Until then use `sudo docker ...` or `newgrp docker`.
+#   - minikube and kind (from binstaller, 40-binaries) use this engine via the docker driver.
+#   - distrobox is NOT taken from apt: Ubuntu's distrobox package depends on
+#     "podman | docker.io", and docker.io conflicts with docker-ce, so apt would pull in
+#     podman. The upstream release tarball is sha256-pinned instead (uidmap comes from apt).
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: zorin-docker
+  labels: { distro: zorin, module: docker }
+spec:
+  target:
+    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+  vars:
+    distroboxVersion: "1.8.2.5"
+    distroboxSha256: 0c3bc4785ee3be3b89f93abb7cc0a9f60e56989e81319af140a4b60403b18f80
+  phases:
+    - name: host-check
+      description: "Refuse to run anywhere but Zorin OS 18 / Ubuntu 24.04 noble"
+      steps:
+        - name: docker-host-check
+          kind: assert
+          spec:
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
+            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+
+    - name: docker-engine
+      description: "Official Docker CE repo, engine + CLI + containerd + buildx + compose, services"
+      dependsOn: [host-check]
+      execution: { continueOnError: false }
+      steps:
+        - name: docker-remove-conflicts
+          kind: commands
+          description: "Remove distro docker/podman-docker packages that conflict with docker-ce (skipped when none are installed)"
+          spec:
+            commands:
+              - name: remove-conflicting-packages
+                sudo: true
+                timeout: 10m
+                run: "apt-get remove -y docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc"
+                unless: "! dpkg -l docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc 2>/dev/null | grep -q '^ii'"
+            probeCommand: "! dpkg -l docker.io docker-doc docker-compose docker-compose-v2 podman-docker containerd runc 2>/dev/null | grep -q '^ii'"
+        - name: docker-apt-repo
+          kind: apt-repository
+          spec:
+            source: deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu noble stable
+            sourceList: /etc/apt/sources.list.d/docker.list
+            signingKeyUrl: https://download.docker.com/linux/ubuntu/gpg
+            keyring: /etc/apt/keyrings/docker.gpg
+            checksum: { algorithm: sha256, value: 1500c1f56fa9e26b9b8f42452a553675796ade0807cdce11975eb98170b3a570 }
+        - name: docker-packages
+          kind: apt-packages
+          spec:
+            packages:
+              - docker-ce
+              - docker-ce-cli
+              - containerd.io
+              - docker-buildx-plugin
+              - docker-compose-plugin
+        - name: docker-services
+          kind: systemd-unit
+          spec:
+            scope: system
+            units:
+              - { name: docker, enabled: true, state: started }
+              - { name: containerd, enabled: true, state: started }
+
+    - name: container-extras
+      description: "distrobox (toolbox replacement) on top of docker (leaf)"
+      dependsOn: [host-check, docker-engine]
+      execution: { continueOnError: false }
+      steps:
+        - name: docker-distrobox-deps
+          kind: apt-packages
+          spec:
+            packages: [uidmap]
+        - name: docker-distrobox
+          kind: shell-scripts
+          spec:
+            shell: bash
+            scripts:
+              - name: distrobox
+                args: ["${distroboxVersion}", "${distroboxSha256}"]
+                timeout: 10m
+                content: |
+                  set -euo pipefail
+                  ver="$1"
+                  sum="$2"
+                  tmp="$(mktemp -d)"
+                  trap 'find "$tmp" -delete' EXIT
+                  curl -fsSL -o "$tmp/distrobox.tar.gz" "https://github.com/89luca89/distrobox/archive/refs/tags/$ver.tar.gz"
+                  echo "$sum  $tmp/distrobox.tar.gz" | sha256sum -c -
+                  tar -xzf "$tmp/distrobox.tar.gz" -C "$tmp"
+                  mkdir -p "$HOME/.local"
+                  sh "$tmp/distrobox-$ver/install" --prefix "$HOME/.local"
+                  "$HOME/.local/bin/distrobox" version
+            probeCommand: "$HOME/.local/bin/distrobox version 2>/dev/null | grep -q 'distrobox: 1.8.2.5'"

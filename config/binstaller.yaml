@@ -1,0 +1,325 @@
+# -----------------------------------------------------------------------------
+# worxbend/binstaller profile: developer binaries into ~/.apps/<tool>.
+#
+# Used by fluxion (profiles/40-binaries.yaml, kind binstaller-profile) and
+# dotbot-linked to ~/.config/binstaller/config.yaml for manual runs:
+#   binstaller plan  --config ~/.config/binstaller/config.yaml
+#   binstaller apply --config ~/.config/binstaller/config.yaml
+#
+# Ported from system-bootstrap (Fedora/Arch) with these changes:
+#   - allowSudoSymlinks: false; the 5 sudo symlinks of neovim were removed
+#     (/usr/local/bin links now come from fluxion; /usr/bin is dpkg-owned).
+#   - added mikefarah yq (replaces Fedora's Go yq; apt `yq` is the Python one).
+#
+# Checksums: the 7 version-pinned artifacts (yazi, zig, kind, zellij, lazygit,
+# jujutsu, dotbot) carry sha256 values computed from the release files on
+# 2026-09-27 (zig and kind also match upstream's published sums). Bump the
+# version -> recompute: curl -fsSL <url> | sha256sum.
+# The 6 `latest-url`/resolver tools (minikube, xplr, kubectl, neovide, neovim,
+# yq) are unpinned by design, which is why this profile stays in
+# `mode: developer` (`strict` would refuse them) and fluxion lint reports
+# binstaller-not-strict / binstaller-unpinned for it.
+# Every tool exposes ~/.apps/<tool>/bin (added to PATH by the dotfiles .zshrc).
+# neovide is an AppImage and needs libfuse2t64 (installed by 00-base).
+# -----------------------------------------------------------------------------
+apiVersion: binstaller.io/v1alpha1
+kind: BinaryDistributionProfile
+metadata:
+  name: developer-binaries
+  labels:
+    platform: linux-amd64
+    source: zorin-bootstrap
+spec:
+  policy:
+    mode: developer
+    appsDir: ${HOME}/.apps
+    continueOnError: true
+    # Root-owned /usr/local/bin/{nvim,neovim,vim} links are created by the
+    # fluxion step binaries-nvim-links (profiles/40-binaries.yaml) instead.
+    allowSudoSymlinks: false
+
+  # Pinned tools use static versions; the rest resolve dynamically at apply time.
+  versions:
+    yazi: v26.5.6
+    zig: "0.15.2"
+    kind: v0.31.0
+    zellij: v0.44.1
+    jujutsu: v0.40.0
+    dotbot: v0.4.2
+    lazygit: "0.61.0"
+    kubectl:
+      resolver:
+        type: http-text
+        url: https://dl.k8s.io/release/stable.txt
+    minikube:
+      dynamic:
+        type: latest-url
+    xplr:
+      dynamic:
+        type: latest-url
+    neovim:
+      dynamic:
+        type: latest-url
+    neovide:
+      dynamic:
+        type: latest-url
+    yq:
+      dynamic:
+        type: latest-url
+
+  plan:
+    - name: yazi
+      kind: binary-tool
+      description: Blazing fast terminal file manager
+      spec:
+        versionRef: yazi
+        installDir: ${appsDir}/yazi
+        download:
+          url: https://github.com/sxyazi/yazi/releases/download/${version}/yazi-x86_64-unknown-linux-gnu.zip
+          filename: yazi.zip
+          checksum:
+            algorithm: sha256
+            value: 1c9096f0a83b8102c194385f644cdeff93cc8269426163c9d033041ebd537bd2
+          archive:
+            type: zip
+            extract:
+              directories:
+                - from: yazi-x86_64-unknown-linux-gnu
+                  to: bin
+        executables:
+          - path: bin/yazi
+            mode: "0755"
+          - path: bin/ya
+            mode: "0755"
+
+    - name: zig
+      kind: binary-tool
+      description: Zig compiler toolchain
+      spec:
+        versionRef: zig
+        installDir: ${appsDir}/zig
+        download:
+          url: https://ziglang.org/download/${version}/zig-x86_64-linux-${version}.tar.xz
+          filename: zig.tar.xz
+          checksum:
+            algorithm: sha256
+            value: 02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239
+          archive:
+            type: tar.xz
+            extract:
+              directories:
+                - from: zig-x86_64-linux-${version}
+                  to: .
+        executables:
+          - path: zig
+            mode: "0755"
+        symlinks:
+          - path: bin/zig
+            target: ${installDir}/zig
+
+    - name: minikube
+      kind: binary-tool
+      description: Local Kubernetes cluster
+      spec:
+        versionRef: minikube
+        installDir: ${appsDir}/minikube/bin
+        download:
+          url: https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+          filename: minikube
+        executables:
+          - path: minikube
+            mode: "0755"
+
+    - name: xplr
+      kind: binary-tool
+      description: Hackable terminal file explorer
+      spec:
+        versionRef: xplr
+        installDir: ${appsDir}/xplr
+        download:
+          url: https://github.com/sayanarijit/xplr/releases/latest/download/xplr-linux.tar.gz
+          filename: xplr.tar.gz
+          archive:
+            type: tar.gz
+            extract:
+              files:
+                - from: xplr
+                  to: bin/xplr
+        executables:
+          - path: bin/xplr
+            mode: "0755"
+
+    - name: kind
+      kind: binary-tool
+      description: Kubernetes in Docker
+      spec:
+        versionRef: kind
+        installDir: ${appsDir}/kind/bin
+        download:
+          url: https://kind.sigs.k8s.io/dl/${version}/kind-linux-amd64
+          filename: kind
+          checksum:
+            algorithm: sha256
+            value: eb244cbafcc157dff60cf68693c14c9a75c4e6e6fedaf9cd71c58117cb93e3fa
+        executables:
+          - path: kind
+            mode: "0755"
+
+    - name: zellij
+      kind: binary-tool
+      description: Terminal workspace multiplexer
+      spec:
+        versionRef: zellij
+        installDir: ${appsDir}/zellij
+        download:
+          url: https://github.com/zellij-org/zellij/releases/download/${version}/zellij-x86_64-unknown-linux-musl.tar.gz
+          filename: zellij.tar.gz
+          checksum:
+            algorithm: sha256
+            value: 669825021d529fca5d939888263c9d2a90762145191fa07581a15250e8af2b49
+          archive:
+            type: tar.gz
+            extract:
+              files:
+                - from: zellij
+                  to: bin/zellij
+        executables:
+          - path: bin/zellij
+            mode: "0755"
+
+    - name: kubectl
+      kind: binary-tool
+      description: Kubernetes command-line tool
+      spec:
+        versionRef: kubectl
+        installDir: ${appsDir}/kubectl/bin
+        download:
+          url: https://dl.k8s.io/release/${version}/bin/linux/amd64/kubectl
+          filename: kubectl
+        executables:
+          - path: kubectl
+            mode: "0755"
+
+    - name: neovide
+      kind: binary-tool
+      description: No-nonsense Neovim GUI
+      spec:
+        versionRef: neovide
+        installDir: ${appsDir}/neovide/bin
+        download:
+          url: https://github.com/neovide/neovide/releases/latest/download/neovide.AppImage
+          filename: neovide
+        executables:
+          - path: neovide
+            mode: "0755"
+
+    - name: neovim
+      kind: binary-tool
+      description: Hyperextensible Vim-based text editor
+      spec:
+        versionRef: neovim
+        installDir: ${appsDir}/neovim
+        download:
+          url: https://github.com/neovim/neovim/releases/latest/download/nvim-linux-x86_64.tar.gz
+          filename: neovim.tar.gz
+          archive:
+            type: tar.gz
+            extract:
+              directories:
+                - from: nvim-linux-x86_64
+                  to: .
+        executables:
+          - path: bin/nvim
+            mode: "0755"
+        symlinks:
+          - path: bin/neovim
+            target: ${installDir}/bin/nvim
+          - path: bin/vim
+            target: ${installDir}/bin/nvim
+
+    - name: lazygit
+      kind: binary-tool
+      description: Terminal UI for git
+      spec:
+        versionRef: lazygit
+        installDir: ${appsDir}/lazygit
+        download:
+          url: https://github.com/jesseduffield/lazygit/releases/download/v${version}/lazygit_${version}_Linux_x86_64.tar.gz
+          filename: lazygit.tar.gz
+          checksum:
+            algorithm: sha256
+            value: 4a9702b346283a23a6919c9424617e14788ac00e9cd3c9be266bac48cc6de8eb
+          archive:
+            type: tar.gz
+            extract:
+              files:
+                - from: lazygit
+                  to: bin/lazygit
+        executables:
+          - path: bin/lazygit
+            mode: "0755"
+        symlinks:
+          - path: bin/lzg
+            target: ${installDir}/bin/lazygit
+
+    - name: jujutsu
+      kind: binary-tool
+      description: Git-compatible VCS
+      spec:
+        versionRef: jujutsu
+        installDir: ${appsDir}/jujutsu
+        download:
+          url: https://github.com/jj-vcs/jj/releases/download/${version}/jj-${version}-x86_64-unknown-linux-musl.tar.gz
+          filename: jj.tar.gz
+          checksum:
+            algorithm: sha256
+            value: 5c8979f46873e052f59bdd9535636dca6e6f9f70571b73f6d63c3b92acfaa037
+          archive:
+            type: tar.gz
+            extract:
+              files:
+                - from: jj
+                  to: bin/jj
+        executables:
+          - path: bin/jj
+            mode: "0755"
+        symlinks:
+          - path: bin/jj-scm
+            target: ${installDir}/bin/jj
+          - path: bin/jujutsu
+            target: ${installDir}/bin/jj
+
+    - name: dotbot
+      kind: binary-tool
+      description: Dotfiles bootstrapper (dotbot-go)
+      spec:
+        versionRef: dotbot
+        installDir: ${appsDir}/dotbot
+        download:
+          url: https://github.com/worxbend/dotbot-go/releases/download/${version}/dotbot-linux-amd64.tar.gz
+          filename: dotbot.tar.gz
+          checksum:
+            algorithm: sha256
+            value: a7229b8d098454ffeb2858ddcf1b63602dfc7be06e08b57c39d839c08f9dbd01
+          archive:
+            type: tar.gz
+            extract:
+              files:
+                - from: dotbot
+                  to: bin/dotbot
+        executables:
+          - path: bin/dotbot
+            mode: "0755"
+
+    - name: yq
+      kind: binary-tool
+      description: Portable YAML/JSON/XML processor (mikefarah/yq)
+      spec:
+        versionRef: yq
+        installDir: ${appsDir}/yq/bin
+        download:
+          url: https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          filename: yq
+        executables:
+          - path: yq
+            mode: "0755"

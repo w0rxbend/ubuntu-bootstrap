@@ -1,0 +1,114 @@
+# post-checks.yaml - verification and manual follow-ups (optional module; run after the re-login that
+# 90-session asks for).
+#
+# Run alone:   ./bootstrap.sh --only post-checks
+# Contents:    - verify: assert steps (docker group + daemon, zsh login shell, VictorMono Nerd Font, neovim,
+#                key CLI binaries). Each is its own leaf phase so every check reports independently.
+#              - manual steps with probes: gh login, SSH key, duplicate Telegram flatpak removed. They pass once
+#                the probe succeeds; until then they fail with the instruction in the message.
+# Caveats:     - `docker run --rm hello-world` pulls a tiny image from Docker Hub (network needed).
+#              - Nothing here changes the system; a failure only means "go fix this" and the run can be repeated.
+#              - Checks run with bash -lc, so ~/.profile PATH applies; binstaller tools in ~/.apps/<tool>/bin and
+#                cargo tools in ~/.cargo/bin are also accepted when they are not on that PATH.
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: zorin-post-checks
+  labels: { distro: zorin, module: post-checks }
+spec:
+  target:
+    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+  phases:
+    - name: host-check
+      steps:
+        - name: post-checks-host-check
+          kind: assert
+          spec:
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
+            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+
+    - name: verify-docker-group
+      dependsOn: [host-check]
+      steps:
+        - name: post-docker-group
+          kind: assert
+          spec:
+            command: "id -nG | grep -qw docker"
+            message: "Current session is not in the docker group: log out and back in (or reboot) after 90-session"
+
+    - name: verify-docker-run
+      dependsOn: [host-check]
+      steps:
+        - name: post-docker-hello-world
+          kind: assert
+          spec:
+            command: "docker run --rm hello-world >/dev/null"
+            message: "docker run hello-world failed: check 'systemctl status docker' and docker group membership"
+
+    - name: verify-login-shell
+      dependsOn: [host-check]
+      steps:
+        - name: post-zsh-login-shell
+          kind: assert
+          spec:
+            command: "getent passwd \"$USER\" | grep -q '/zsh$'"
+            message: "Login shell is not zsh: run 'chsh -s /usr/bin/zsh' or ./bootstrap.sh --only session"
+
+    - name: verify-fonts
+      dependsOn: [host-check]
+      steps:
+        - name: post-victormono-nerd-font
+          kind: assert
+          spec:
+            command: "fc-list | grep -qi 'VictorMono Nerd'"
+            message: "VictorMono Nerd Font missing: run ./bootstrap.sh --only binaries (nerd fonts)"
+
+    - name: verify-neovim
+      dependsOn: [host-check]
+      steps:
+        - name: post-neovim
+          kind: assert
+          spec:
+            command: "if command -v nvim >/dev/null; then nvim --version | head -1; else \"$HOME/.apps/neovim/bin/nvim\" --version | head -1; fi"
+            message: "neovim is not runnable: run ./bootstrap.sh --only binaries"
+
+    - name: verify-binaries
+      dependsOn: [host-check]
+      steps:
+        - name: post-key-binaries
+          kind: assert
+          spec:
+            command: >-
+              missing="";
+              for t in cargo-binstall eza just dotbot kubectl; do
+              command -v "$t" >/dev/null 2>&1 || test -x "$HOME/.apps/$t/bin/$t" || test -x "$HOME/.cargo/bin/$t" || missing="$missing $t";
+              done;
+              if [ -n "$missing" ]; then echo "missing:$missing" >&2; exit 1; fi
+            message: "Key CLI binaries missing (see output): run ./bootstrap.sh --only toolchains and --only binaries"
+
+    - name: manual-gh-auth
+      dependsOn: [host-check]
+      steps:
+        - name: post-manual-gh-auth
+          kind: manual
+          spec:
+            message: "Run: gh auth login"
+            probeCommand: "gh auth status >/dev/null 2>&1"
+
+    - name: manual-ssh-key
+      dependsOn: [host-check]
+      steps:
+        - name: post-manual-ssh-key
+          kind: manual
+          spec:
+            message: "Create an SSH key and register it: ssh-keygen -t ed25519 then gh ssh-key add ~/.ssh/id_ed25519.pub"
+            probeCommand: "test -f $HOME/.ssh/id_ed25519.pub"
+
+    - name: manual-telegram-duplicate
+      dependsOn: [host-check]
+      steps:
+        - name: post-manual-telegram-duplicate
+          kind: manual
+          spec:
+            message: "Telegram is installed twice (snap + flatpak); remove the flatpak: flatpak uninstall org.telegram.desktop"
+            probeCommand: "! flatpak info org.telegram.desktop >/dev/null 2>&1"

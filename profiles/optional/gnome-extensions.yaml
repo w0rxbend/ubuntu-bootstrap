@@ -1,0 +1,105 @@
+# gnome-extensions.yaml - GNOME Shell extensions carried over from the Fedora/Arch setup (optional module).
+#
+# Run alone:   ./bootstrap.sh --only gnome-extensions
+# Contents:    gnome-extensions-cli (`gext`, via pipx) and six extensions installed from extensions.gnome.org:
+#              user-theme, battery-indicator-icon, notification-icons, tophat, space-bar, AlphabeticalAppGrid.
+# Excluded:    dash-to-dock (conflicts with the Zorin Taskbar), tilingshell (tiling layout, not wanted on Zorin),
+#              appindicator and status-icons (Zorin already ships and enables them).
+# Caveats:     - Must run inside the logged-in GNOME session: gext and `gnome-extensions` talk to gnome-shell
+#                over the session D-Bus. It does not work over SSH or from a TTY.
+#              - pipx must be installed (00-base) and on fluxion's PATH; fluxion must be started with
+#                ~/.local/bin on PATH (bootstrap.sh exports it) so a freshly installed gext is found.
+#              - gext installs and enables each extension; a newly installed extension may need a
+#                log out/in (Wayland) before gnome-shell shows it as ACTIVE.
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: zorin-gnome-extensions
+  labels: { distro: zorin, module: gnome-extensions }
+spec:
+  target:
+    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+  phases:
+    - name: host-check
+      steps:
+        - name: gnome-extensions-host-check
+          kind: assert
+          spec:
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
+            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+        - name: gnome-extensions-session-check
+          kind: assert
+          spec:
+            command: "command -v gnome-extensions >/dev/null && gnome-extensions list >/dev/null 2>&1"
+            message: "Run this module from inside the logged-in GNOME session (needs gnome-shell on the session D-Bus)"
+
+    - name: gext-cli
+      description: "gnome-extensions-cli (gext) via pipx"
+      dependsOn: [host-check]
+      steps:
+        - name: gext-cli-install
+          kind: tool-packages
+          spec:
+            backend: pipx
+            packages: [gnome-extensions-cli]
+            probeCommand: "test -x $HOME/.local/bin/gext"
+
+    - name: gext-install
+      description: "Install and enable the GNOME Shell extensions (leaf phase)"
+      dependsOn: [gext-cli]
+      execution: { continueOnError: true }
+      steps:
+        - name: gext-user-theme
+          kind: commands
+          spec:
+            probeCommand: "gnome-extensions info user-theme@gnome-shell-extensions.gcampax.github.com >/dev/null 2>&1"
+            commands:
+              - name: user-theme
+                run: '"$HOME/.local/bin/gext" install user-theme@gnome-shell-extensions.gcampax.github.com'
+                unless: "gnome-extensions info user-theme@gnome-shell-extensions.gcampax.github.com >/dev/null 2>&1"
+                timeout: 5m
+        - name: gext-battery-indicator-icon
+          kind: commands
+          spec:
+            probeCommand: "gnome-extensions info battery-indicator-icon@Deminder >/dev/null 2>&1"
+            commands:
+              - name: battery-indicator-icon
+                run: '"$HOME/.local/bin/gext" install battery-indicator-icon@Deminder'
+                unless: "gnome-extensions info battery-indicator-icon@Deminder >/dev/null 2>&1"
+                timeout: 5m
+        - name: gext-notification-icons
+          kind: commands
+          spec:
+            probeCommand: "gnome-extensions info notification-icons@muhammad_ans.github >/dev/null 2>&1"
+            commands:
+              - name: notification-icons
+                run: '"$HOME/.local/bin/gext" install notification-icons@muhammad_ans.github'
+                unless: "gnome-extensions info notification-icons@muhammad_ans.github >/dev/null 2>&1"
+                timeout: 5m
+        - name: gext-tophat
+          kind: commands
+          spec:
+            probeCommand: "gnome-extensions info tophat@fflewddur.github.io >/dev/null 2>&1"
+            commands:
+              - name: tophat
+                run: '"$HOME/.local/bin/gext" install tophat@fflewddur.github.io'
+                unless: "gnome-extensions info tophat@fflewddur.github.io >/dev/null 2>&1"
+                timeout: 5m
+        - name: gext-space-bar
+          kind: commands
+          spec:
+            probeCommand: "gnome-extensions info space-bar@luchrioh >/dev/null 2>&1"
+            commands:
+              - name: space-bar
+                run: '"$HOME/.local/bin/gext" install space-bar@luchrioh'
+                unless: "gnome-extensions info space-bar@luchrioh >/dev/null 2>&1"
+                timeout: 5m
+        - name: gext-alphabetical-app-grid
+          kind: commands
+          spec:
+            probeCommand: "gnome-extensions info AlphabeticalAppGrid@stuarthayhurst >/dev/null 2>&1"
+            commands:
+              - name: alphabetical-app-grid
+                run: '"$HOME/.local/bin/gext" install AlphabeticalAppGrid@stuarthayhurst'
+                unless: "gnome-extensions info AlphabeticalAppGrid@stuarthayhurst >/dev/null 2>&1"
+                timeout: 5m

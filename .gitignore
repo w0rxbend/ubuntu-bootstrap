@@ -1,0 +1,38 @@
+# Editors / OS
+*.swp
+*.swo
+*~
+.DS_Store
+.idea/
+.vscode/
+
+# Scratch and logs
+/tmp/
+*.log
+*.bak
+*.orig
+
+# Secrets: never commit keys, tokens or env files
+.env
+.env.*
+!.env.example
+id_*
+!id_*.pub.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.gpg
+!config/**/*.gpg.example
+.ssh/
+known_hosts
+*.kdbx
+
+# fluxion scratch output (plans, snapshots, imports written into the repo by hand)
+/snapshot*.json
+/plan*.json
+/import-*.yaml
+
+# nvim runtime state if it ever lands in the linked config dir
+dotfiles/nvim/.luarc.json
+dotfiles/nvim/spell/*.spl

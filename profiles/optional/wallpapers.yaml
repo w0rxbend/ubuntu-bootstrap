@@ -1,0 +1,49 @@
+# wallpapers.yaml - wallpapers from the old system-bootstrap repo (optional module).
+#
+# Run alone:   ./bootstrap.sh --only wallpapers
+# Contents:    sparse, blobless, shallow clone of github.com/w0rxbend/system-bootstrap limited to
+#              assets/Backgrounds and assets/arch-backgrounds, copied into
+#              ~/.local/share/backgrounds/system-bootstrap (pick them in Settings > Background > Add Picture,
+#              or in Zorin Appearance). This keeps ~109 MB of images out of this repo.
+# Caveats:     - Skipped when the destination directory already exists; delete it to re-download.
+#              - Needs git (00-base) and network access to github.com.
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: zorin-wallpapers
+  labels: { distro: zorin, module: wallpapers }
+spec:
+  target:
+    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+  phases:
+    - name: host-check
+      steps:
+        - name: wallpapers-host-check
+          kind: assert
+          spec:
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
+            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+
+    - name: wallpapers
+      description: "Fetch the old repo's wallpapers into ~/.local/share/backgrounds/system-bootstrap (leaf phase)"
+      dependsOn: [host-check]
+      execution: { continueOnError: true }
+      steps:
+        - name: wallpapers-fetch
+          kind: commands
+          spec:
+            probeCommand: "test -d $HOME/.local/share/backgrounds/system-bootstrap"
+            commands:
+              - name: sparse-clone-backgrounds
+                timeout: 20m
+                creates: ${HOME}/.local/share/backgrounds/system-bootstrap
+                run: >-
+                  set -e;
+                  d=$(mktemp -d);
+                  trap 'find "$d" -delete' EXIT;
+                  git clone --depth 1 --filter=blob:none --sparse https://github.com/w0rxbend/system-bootstrap.git "$d/sb";
+                  git -C "$d/sb" sparse-checkout set assets/Backgrounds assets/arch-backgrounds;
+                  mkdir -p "$d/out";
+                  cp -r "$d/sb/assets/Backgrounds/." "$d/sb/assets/arch-backgrounds/." "$d/out/";
+                  mkdir -p "$HOME/.local/share/backgrounds";
+                  mv "$d/out" "$HOME/.local/share/backgrounds/system-bootstrap"

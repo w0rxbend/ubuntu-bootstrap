@@ -1,0 +1,67 @@
+# 70-gnome.yaml - module "gnome"
+#
+# GNOME / Zorin desktop settings carried over from the old bootstrap (POSIX rewrite of the
+# zsh-only gsettings block):
+#   - Zorin Taskbar "hot-keys" off (it grabs Super+1..9 for launching pinned apps)
+#   - 9 fixed (non-dynamic) workspaces
+#   - Super+N switches to workspace N, Super+Shift+N moves the window to workspace N
+#     (GNOME's switch-to-application-N bindings are cleared so they do not clash)
+#   - Screenshot UI on Super+Print and Print
+#
+# Run alone:  ./bootstrap.sh --only gnome
+#
+# Caveats:
+#   - Must run inside the logged-in GNOME session (gsettings needs the session D-Bus); the
+#     gnome-session-check assert fails fast otherwise (e.g. over SSH or from a TTY).
+#   - No tiling / Arch desktop pieces (niri, PaperWM, dash-to-dock, tilingshell) are configured.
+#   - GNOME extensions themselves are handled by the optional profile gnome-extensions.
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: zorin-gnome
+  labels: { distro: zorin, module: gnome }
+spec:
+  target:
+    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+  phases:
+    - name: host-check
+      description: "Zorin OS 18 / noble, running inside a GNOME session"
+      execution: { continueOnError: false }
+      steps:
+        - name: gnome-host-check
+          kind: assert
+          spec:
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
+            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+        - name: gnome-session-check
+          kind: assert
+          spec:
+            command: "command -v gsettings >/dev/null && test -n \"$DBUS_SESSION_BUS_ADDRESS\""
+            message: "Run from the logged-in GNOME session"
+
+    - name: gnome-settings
+      description: "Fixed workspaces and workspace keybindings"
+      dependsOn: [host-check]
+      steps:
+        - name: gnome-workspaces-keybindings
+          kind: shell-scripts
+          spec:
+            shell: bash
+            scripts:
+              - name: gnome-workspaces-keybindings
+                content: |
+                  set -euo pipefail
+                  # Zorin Taskbar grabs Super+1..9 for pinned apps; free them for workspaces.
+                  if gsettings list-keys org.gnome.shell.extensions.zorin-taskbar >/dev/null 2>&1; then
+                    gsettings set org.gnome.shell.extensions.zorin-taskbar hot-keys false
+                  fi
+                  gsettings set org.gnome.mutter dynamic-workspaces false
+                  gsettings set org.gnome.desktop.wm.preferences num-workspaces 9
+                  for i in 1 2 3 4 5 6 7 8 9; do
+                    gsettings set org.gnome.shell.keybindings "switch-to-application-$i" "[]"
+                    gsettings set org.gnome.desktop.wm.keybindings "switch-to-workspace-$i" "['<Super>$i']"
+                    gsettings set org.gnome.desktop.wm.keybindings "move-to-workspace-$i" "['<Super><Shift>$i']"
+                  done
+                  gsettings set org.gnome.shell.keybindings show-screenshot-ui "['<Super>Print', 'Print']"
+                timeout: 2m
+            probeCommand: "test \"$(gsettings get org.gnome.desktop.wm.preferences num-workspaces)\" = 9 && gsettings get org.gnome.desktop.wm.keybindings switch-to-workspace-9 | grep -q Super"

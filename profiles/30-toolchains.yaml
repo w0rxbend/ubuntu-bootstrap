@@ -1,0 +1,307 @@
+# -----------------------------------------------------------------------------
+# 30-toolchains.yaml  (fluxion state name: toolchains)
+#
+# User-level language toolchains and version managers, carried over from the old
+# Fedora/Arch system-bootstrap: rustup + cargo-binstall (+ 14 crates), Go (~/.go),
+# SDKMAN (+ java, gradle, maven, sbt, scala, micronaut, vertx, visualvm),
+# nvm + node LTS, pnpm, pyenv, poetry, uv, miniforge (~/.miniforge3), juliaup,
+# kustomize + helm (into ~/.apps/*/bin, no sudo) and dotenvx.
+#
+# Run alone:   ./bootstrap.sh --only toolchains
+#
+# Caveats:
+# - Nothing here uses sudo. Build dependencies (pyenv, crates) come from 00-base.
+# - bootstrap.sh exports PATH with ~/.cargo/bin, ~/.local/bin, ~/.go/bin ... BEFORE
+#   fluxion starts. tool-packages checks for `cargo-binstall` on fluxion's own PATH
+#   at execute time, so running this file with a bare `fluxion apply` on a fresh
+#   host fails the rust-crates phase (just re-run through bootstrap.sh).
+# - SDKMAN, nvm and pyenv installers are bash-only, so they use shell-scripts with
+#   `shell: bash` and a pinned sha256 instead of the `toolchain` kind (which runs
+#   its script with dash).
+# - Installers that edit shell rc files (sdkman, pnpm, juliaup) only touch the
+#   throwaway oh-my-zsh .zshrc; 80-dotfiles later replaces it with the repo's.
+# - Pinned digests were computed on 2026-09-27. When an upstream script changes,
+#   the step fails closed: review the new script, then update the sha256 here.
+# -----------------------------------------------------------------------------
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: zorin-toolchains
+  labels: { distro: zorin, module: toolchains }
+spec:
+  target:
+    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+  vars:
+    goVersion: "1.27.1"
+    goSha256: 63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445
+  phases:
+    - name: host-check
+      steps:
+        - name: toolchains-host-check
+          kind: assert
+          spec:
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
+            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+
+    # --- Rust ---------------------------------------------------------------
+    - name: rust
+      description: "rustup (stable toolchain in ~/.cargo, ~/.rustup) and cargo-binstall"
+      dependsOn: [host-check]
+      execution: { continueOnError: false }
+      steps:
+        - name: rustup
+          kind: toolchain
+          spec:
+            kind: RUSTUP
+            installScriptUrl: https://sh.rustup.rs
+            sha256: 7d0ea0f8eba7fa1ebfe998091cd7ec4501e33ec5ca6b884eb4d894d7da5170af
+            # --no-modify-path: the dotbot-managed .zshrc already sources ~/.cargo/env.
+            installArgs: ["-y", "--no-modify-path"]
+            probeCommand: "test -x $HOME/.cargo/bin/rustup"
+        - name: cargo-binstall
+          kind: toolchain
+          spec:
+            kind: GENERIC
+            installScriptUrl: https://raw.githubusercontent.com/cargo-bins/cargo-binstall/422f3094be6a0843857aa008b499caaf6bce0da8/install-from-binstall-release.sh
+            sha256: d3a93702160e0ec03e2a4e996855db1f01adee801fb84a43add24e0877ef8eae
+            probeCommand: "test -x $HOME/.cargo/bin/cargo-binstall"
+
+    - name: rust-crates
+      description: "Prebuilt crates via cargo-binstall (old cargo-packages.sh minus multibg-wayland)"
+      dependsOn: [host-check, rust]
+      execution: { continueOnError: true }
+      steps:
+        # No probeCommand on purpose: a single probe would skip all 14 items.
+        # Reruns are handled by fluxion state + --skip-already-installed.
+        # Note: `hx` is sitkevij's hex viewer, not the helix editor.
+        # `fd-find` installs the `fd` binary (apt fd-find is intentionally not used).
+        # ripgrep is NOT listed: the apt package (00-base apt-cli) provides a system-wide rg.
+        - name: rust-crates
+          kind: tool-packages
+          spec:
+            backend: cargo-binstall
+            packages:
+              - eza
+              - lsd
+              - fd-find
+              - bingrep
+              - hx
+              - just
+              - sd
+              - procs
+              - du-dust
+              - gping
+              - tree-sitter-cli
+              - macchina
+              - bottom
+              - broot
+
+    # --- Go -----------------------------------------------------------------
+    - name: go
+      description: "Go toolchain in ~/.go (GOPATH=~/.go-workspace is set in .zshrc)"
+      dependsOn: [host-check]
+      steps:
+        - name: go-toolchain
+          kind: shell-scripts
+          spec:
+            shell: bash
+            scripts:
+              - name: go-toolchain
+                content: |
+                  set -euo pipefail
+                  ver="$1"
+                  sum="$2"
+                  tmp="$(mktemp -d)"
+                  trap 'rm --recursive --force "$tmp"' EXIT
+                  curl -fsSL -o "$tmp/go.tgz" "https://go.dev/dl/go$ver.linux-amd64.tar.gz"
+                  echo "$sum  $tmp/go.tgz" | sha256sum -c -
+                  # Go must not be unpacked over an older release; replace ~/.go wholesale.
+                  rm --recursive --force "$HOME/.go"
+                  mkdir -p "$HOME/.go" "$HOME/.go-workspace"
+                  tar -xzf "$tmp/go.tgz" -C "$HOME/.go" --strip-components=1
+                  "$HOME/.go/bin/go" version
+                args: ["${goVersion}", "${goSha256}"]
+                timeout: 15m
+            probeCommand: "$HOME/.go/bin/go version 2>/dev/null | grep -q 'go1.27.1 '"
+
+    # --- SDKMAN (JVM) ---------------------------------------------------------
+    - name: sdkman
+      description: "SDKMAN in ~/.sdkman (bash installer, pinned), non-interactive mode"
+      dependsOn: [host-check]
+      execution: { continueOnError: false }
+      steps:
+        - name: sdkman-install
+          kind: shell-scripts
+          spec:
+            shell: bash
+            scripts:
+              - name: sdkman
+                url: https://get.sdkman.io
+                sha256: b6f4fb257b420c7291c35549ae714af6d5af290bb8d57c219918f1f3d3d3e052
+                timeout: 10m
+            probeCommand: "test -s $HOME/.sdkman/bin/sdkman-init.sh"
+        - name: sdkman-auto-answer
+          kind: commands
+          spec:
+            commands:
+              - name: sdkman-auto-answer
+                run: "sed -i 's/^sdkman_auto_answer=false/sdkman_auto_answer=true/' \"$HOME/.sdkman/etc/config\""
+                unless: "grep -q '^sdkman_auto_answer=true' $HOME/.sdkman/etc/config"
+            probeCommand: "grep -q '^sdkman_auto_answer=true' $HOME/.sdkman/etc/config"
+
+    - name: sdkman-candidates
+      description: "JVM candidates (latest SDKMAN defaults, as in the old sdkman-packages.sh)"
+      dependsOn: [host-check, sdkman]
+      execution: { continueOnError: true }
+      steps:
+        - name: sdkman-candidates
+          kind: sdkman-packages
+          spec:
+            packages: [java, gradle, maven, sbt, scala, micronaut, vertx, visualvm]
+
+    # --- Node ---------------------------------------------------------------
+    - name: node
+      description: "nvm v0.40.7 (no rc edits) and the current Node LTS as default"
+      dependsOn: [host-check]
+      execution: { continueOnError: false }
+      steps:
+        - name: nvm-install
+          kind: shell-scripts
+          spec:
+            shell: bash
+            scripts:
+              - name: nvm
+                url: https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.7/install.sh
+                sha256: 066ce4eaf4d78eaa6410433bc9ba58faaba646157cbbed6109153e6c24c5f8a5
+                # PROFILE=/dev/null: do not append to .zshrc (it is dotbot-owned and loads nvm itself).
+                env: { PROFILE: /dev/null }
+                timeout: 10m
+            probeCommand: "test -s $HOME/.nvm/nvm.sh"
+        - name: node-lts
+          kind: commands
+          spec:
+            commands:
+              - name: node-lts
+                run: ". \"$HOME/.nvm/nvm.sh\" && nvm install --lts && nvm alias default 'lts/*'"
+                timeout: 15m
+            probeCommand: ". $HOME/.nvm/nvm.sh && nvm which default >/dev/null 2>&1"
+
+    # --- Small user-level installers (one leaf phase each) --------------------
+    - name: pnpm
+      description: "pnpm standalone into ~/.local/share/pnpm (PNPM_HOME in .zshrc)"
+      dependsOn: [host-check]
+      steps:
+        - name: pnpm
+          kind: commands
+          spec:
+            commands:
+              - name: pnpm
+                run: "set -o pipefail; curl -fsSL https://get.pnpm.io/install.sh | env PNPM_HOME=\"$HOME/.local/share/pnpm\" sh -"
+                creates: ${HOME}/.local/share/pnpm/pnpm
+                timeout: 10m
+            probeCommand: "test -x $HOME/.local/share/pnpm/pnpm"
+
+    - name: pyenv
+      description: "pyenv in ~/.pyenv (build deps are in 00-base apt-build)"
+      dependsOn: [host-check]
+      steps:
+        - name: pyenv
+          kind: shell-scripts
+          spec:
+            shell: bash
+            scripts:
+              - name: pyenv
+                url: https://pyenv.run
+                sha256: 1065197a9fff657e0e2941e4ca8c8b6e72833833466b777b9eddd0fff335ec41
+                timeout: 10m
+            probeCommand: "test -x $HOME/.pyenv/bin/pyenv"
+
+    - name: poetry
+      description: "Poetry via the official installer into ~/.local/bin"
+      dependsOn: [host-check]
+      steps:
+        - name: poetry
+          kind: commands
+          spec:
+            commands:
+              - name: poetry
+                run: "set -o pipefail; curl -sSL https://install.python-poetry.org | python3 -"
+                creates: ${HOME}/.local/bin/poetry
+                timeout: 10m
+            probeCommand: "test -x $HOME/.local/bin/poetry"
+
+    - name: uv
+      description: "uv/uvx into ~/.local/bin (no rc edits; .zshrc sources ~/.local/bin/env)"
+      dependsOn: [host-check]
+      steps:
+        - name: uv
+          kind: commands
+          spec:
+            commands:
+              - name: uv
+                run: "set -o pipefail; curl -LsSf https://astral.sh/uv/install.sh | env UV_NO_MODIFY_PATH=1 sh"
+                creates: ${HOME}/.local/bin/uv
+            probeCommand: "test -x $HOME/.local/bin/uv"
+
+    - name: miniforge
+      description: "Miniforge (conda + mamba) in batch mode into ~/.miniforge3; .zshrc has the hooks"
+      dependsOn: [host-check]
+      steps:
+        - name: miniforge
+          kind: commands
+          spec:
+            commands:
+              - name: miniforge
+                run: "set -e; f=$(mktemp --suffix=.sh); curl -fsSL -o \"$f\" https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh; bash \"$f\" -b -p \"$HOME/.miniforge3\"; rm --force \"$f\""
+                creates: ${HOME}/.miniforge3/bin/conda
+                timeout: 20m
+            probeCommand: "test -x $HOME/.miniforge3/bin/conda"
+
+    - name: julia
+      description: "juliaup + default Julia channel (.zshrc already has the juliaup PATH block)"
+      dependsOn: [host-check]
+      steps:
+        - name: juliaup
+          kind: toolchain
+          spec:
+            kind: JULIAUP
+            installScriptUrl: https://install.julialang.org
+            sha256: f6df6bf41ccae382466efdf00848c33670a33ea0030313d8594e676d6b297cf5
+            installArgs: ["--yes", "--add-to-path=no"]
+            probeCommand: "test -x $HOME/.juliaup/bin/juliaup"
+
+    - name: kubernetes-cli
+      description: "kustomize and helm 4 into ~/.apps/*/bin (no sudo; both dirs are on PATH in .zshrc)"
+      dependsOn: [host-check]
+      execution: { continueOnError: true }
+      steps:
+        # kubectl, kind and minikube come from binstaller (40-binaries).
+        - name: kustomize
+          kind: commands
+          spec:
+            commands:
+              - name: kustomize
+                run: "set -o pipefail; mkdir -p \"$HOME/.apps/kustomize/bin\" && curl -fsSL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash -s -- \"$HOME/.apps/kustomize/bin\""
+                creates: ${HOME}/.apps/kustomize/bin/kustomize
+            probeCommand: "test -x $HOME/.apps/kustomize/bin/kustomize"
+        - name: helm
+          kind: commands
+          spec:
+            commands:
+              - name: helm
+                run: "set -o pipefail; mkdir -p \"$HOME/.apps/helm/bin\" && curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | env HELM_INSTALL_DIR=\"$HOME/.apps/helm/bin\" USE_SUDO=false bash"
+                creates: ${HOME}/.apps/helm/bin/helm
+            probeCommand: "test -x $HOME/.apps/helm/bin/helm"
+
+    - name: dotenvx
+      description: "dotenvx standalone binary into ~/.local/bin"
+      dependsOn: [host-check]
+      steps:
+        - name: dotenvx
+          kind: commands
+          spec:
+            commands:
+              - name: dotenvx
+                run: "set -o pipefail; mkdir -p \"$HOME/.local/bin\" && curl -sfS \"https://dotenvx.sh?directory=$HOME/.local/bin\" | sh"
+                creates: ${HOME}/.local/bin/dotenvx
+            probeCommand: "test -x $HOME/.local/bin/dotenvx"

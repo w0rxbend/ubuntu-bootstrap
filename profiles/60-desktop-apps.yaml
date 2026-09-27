@@ -1,0 +1,265 @@
+# 60-desktop-apps.yaml - module "desktop-apps"
+#
+# GUI applications and user-level app installers:
+#   - flathub system remote (no-op on Zorin, which ships it)
+#   - 54 flatpaks from flathub, split into 8 independent category phases
+#   - snaps: theia-ide (classic) and telegram-desktop
+#   - AI CLIs: Claude Code, OpenAI Codex, Kimi Code
+#   - home-dir apps: Zed (zed.dev installer) and the Paseo AppImage (~/Apps, linked as ~/.local/bin/paseo)
+#
+# Run alone:  ./bootstrap.sh --only desktop-apps
+#
+# IMPORTANT: run this from the logged-in, local GNOME session (not over SSH). Zorin's flatpak
+# installs are system-wide and polkit only authorizes them without a password for members of
+# the sudo group in an *active local* session.
+#
+# Notes:
+#   - Every category is a leaf phase with continueOnError, so one broken app never blocks others.
+#   - Several IDs are Zorin OS Pro preinstalls; installing them again is a no-op.
+#   - org.gnome.Boxes and dev.vencord.Vesktop were installed by hand on this host.
+#   - Deliberately excluded: com.oguzhaninan.Stacer (gone from flathub; apt stacer in 00-base),
+#     com.brave.Browser (Brave comes from Zorin's apt repo), dev.zed.Zed (Zed comes from
+#     zed.dev/install.sh below), org.telegram.desktop (the telegram-desktop snap is used).
+#   - claude-desktop and chatgpt are apt packages in 10-apps.
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: zorin-desktop-apps
+  labels: { distro: zorin, module: desktop-apps }
+spec:
+  target:
+    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+  phases:
+    - name: host-check
+      description: "Refuse to run anywhere but Zorin OS 18 / Ubuntu 24.04 noble"
+      steps:
+        - name: desktop-apps-host-check
+          kind: assert
+          spec:
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
+            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+
+    - name: flathub
+      description: "Flathub system remote (remote-add --if-not-exists)"
+      dependsOn: [host-check]
+      steps:
+        - name: flathub-remote
+          kind: flatpak-remote
+          spec:
+            remote: flathub
+            url: https://flathub.org/repo/flathub.flatpakrepo
+            checksum: { algorithm: sha256, value: 3371dd250e61d9e1633630073fefda153cd4426f72f4afa0c3373ae2e8fea03a }
+
+    - name: flatpak-browsers
+      dependsOn: [host-check, flathub]
+      execution: { continueOnError: true }
+      steps:
+        - name: flatpak-browsers
+          kind: flatpak-packages
+          spec:
+            remote: flathub
+            apps:
+              - io.gitlab.librewolf-community
+              - com.google.Chrome
+              - app.zen_browser.zen
+
+    - name: flatpak-communication
+      dependsOn: [host-check, flathub]
+      execution: { continueOnError: true }
+      steps:
+        - name: flatpak-communication
+          kind: flatpak-packages
+          spec:
+            remote: flathub
+            apps:
+              - com.discordapp.Discord
+              - org.zulip.Zulip
+              - dev.vencord.Vesktop        # user install on this host
+
+    - name: flatpak-media
+      dependsOn: [host-check, flathub]
+      execution: { continueOnError: true }
+      steps:
+        - name: flatpak-media
+          kind: flatpak-packages
+          spec:
+            remote: flathub
+            apps:
+              - com.spotify.Client
+              - org.audacityteam.Audacity
+              - org.kde.audiotube
+              - io.github.hrkfdn.ncspot
+              - org.gnome.Decibels
+              - io.bassi.Amberol
+              - com.github.neithern.g4music
+
+    - name: flatpak-graphics
+      dependsOn: [host-check, flathub]
+      execution: { continueOnError: true }
+      steps:
+        - name: flatpak-graphics
+          kind: flatpak-packages
+          spec:
+            remote: flathub
+            apps:
+              - org.kde.kdenlive
+              - org.inkscape.Inkscape
+              - org.kde.krita
+              - org.blender.Blender
+              - org.freecad.FreeCAD
+              - org.godotengine.Godot
+              - org.librecad.librecad
+              - com.bambulab.BambuStudio
+              - io.github.nokse22.Exhibit
+
+    - name: flatpak-writing
+      dependsOn: [host-check, flathub]
+      execution: { continueOnError: true }
+      steps:
+        - name: flatpak-writing
+          kind: flatpak-packages
+          spec:
+            remote: flathub
+            apps:
+              - io.gitlab.liferooter.TextPieces
+              - org.gnome.gitlab.somas.Apostrophe
+              - org.gnome.gitlab.ilhooq.Bookup
+              - page.codeberg.censor.Censor
+              - com.logseq.Logseq
+
+    - name: flatpak-dev
+      dependsOn: [host-check, flathub]
+      execution: { continueOnError: true }
+      steps:
+        - name: flatpak-dev
+          kind: flatpak-packages
+          spec:
+            remote: flathub
+            apps:
+              - app.devsuite.Ptyxis
+              - org.wezfurlong.wezterm
+              - com.vscodium.codium
+
+    - name: flatpak-system
+      dependsOn: [host-check, flathub]
+      execution: { continueOnError: true }
+      steps:
+        - name: flatpak-system
+          kind: flatpak-packages
+          spec:
+            remote: flathub
+            apps:
+              - com.mattjakeman.ExtensionManager
+              - com.github.tchx84.Flatseal
+              - io.github.giantpinkrobots.flatsweep
+              - io.github.flattool.Warehouse
+              - net.nokyan.Resources
+              - page.tesk.Refine
+              - io.missioncenter.MissionCenter
+              - be.alexandervanhee.gradia
+              - io.github.mrvladus.List
+              - com.belmoussaoui.Authenticator
+              - org.gnome.Polari
+              - org.gnome.dspy
+              - io.github.swordpuffin.rewaita
+              - org.gnome.design.Emblem
+              - org.mozilla.vpn
+              - io.github.zingytomato.netpeek
+              - org.gnome.Boxes             # user install on this host
+
+    - name: flatpak-productivity
+      dependsOn: [host-check, flathub]
+      execution: { continueOnError: true }
+      steps:
+        - name: flatpak-productivity
+          kind: flatpak-packages
+          spec:
+            remote: flathub
+            apps:
+              - com.pojtinger.felicitas.Sessions
+              - com.rafaelmardojai.Blanket
+              - io.github.nozwock.Packet
+              - org.localsend.localsend_app
+              - io.gitlab.news_flash.NewsFlash
+              - io.github.diegopvlk.Dosage
+              - dev.Cogitri.Health
+
+    - name: snaps
+      description: "Snaps installed by hand on this host (ghostty lives in 50-shell)"
+      dependsOn: [host-check]
+      execution: { continueOnError: true }
+      steps:
+        - name: snap-theia-ide
+          kind: commands
+          spec:
+            commands:
+              - name: theia-ide
+                run: "snap install theia-ide --classic"
+                sudo: true
+                unless: "snap list theia-ide >/dev/null 2>&1"
+                timeout: 15m
+            probeCommand: "snap list theia-ide >/dev/null 2>&1"
+        - name: snap-telegram
+          kind: tool-packages
+          spec:
+            backend: snap
+            packages: [telegram-desktop]
+            probeCommand: "snap list telegram-desktop >/dev/null 2>&1"
+
+    - name: ai-tools
+      description: "AI coding CLIs from their vendors' installers"
+      dependsOn: [host-check]
+      execution: { continueOnError: true }
+      steps:
+        - name: claude-code
+          kind: commands
+          spec:
+            commands:
+              - name: claude-code-install
+                run: "curl -fsSL https://claude.ai/install.sh | bash"
+                creates: ${HOME}/.local/bin/claude
+                timeout: 10m
+            probeCommand: "test -x $HOME/.local/bin/claude"
+        - name: codex-cli
+          kind: commands
+          spec:
+            commands:
+              - name: codex-install
+                run: "curl -fsSL https://chatgpt.com/codex/install.sh | sh"
+                creates: ${HOME}/.local/bin/codex
+                timeout: 10m
+            probeCommand: "test -x $HOME/.local/bin/codex"
+        - name: kimi-code
+          kind: commands
+          spec:
+            commands:
+              # bash, not zsh: the zsh variant failed on this host
+              - name: kimi-code-install
+                run: "curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash"
+                creates: ${HOME}/.kimi-code/bin/kimi
+                timeout: 10m
+            probeCommand: "test -x $HOME/.kimi-code/bin/kimi"
+
+    - name: home-apps
+      description: "Apps installed into the home directory: Zed and the Paseo AppImage"
+      dependsOn: [host-check]
+      execution: { continueOnError: true }
+      steps:
+        - name: zed
+          kind: commands
+          spec:
+            commands:
+              - name: zed-install
+                run: "curl -f https://zed.dev/install.sh | sh"
+                creates: ${HOME}/.local/zed.app/bin/zed
+                timeout: 10m
+            probeCommand: "test -x $HOME/.local/zed.app/bin/zed"
+        - name: paseo
+          kind: commands
+          spec:
+            commands:
+              - name: paseo-appimage
+                run: 'mkdir -p "$HOME/Apps" "$HOME/.local/bin" && curl -fL -o "$HOME/Apps/Paseo-x86_64.AppImage" https://github.com/getpaseo/paseo/releases/latest/download/Paseo-x86_64.AppImage && chmod +x "$HOME/Apps/Paseo-x86_64.AppImage" && ln -sfn "$HOME/Apps/Paseo-x86_64.AppImage" "$HOME/.local/bin/paseo"'
+                creates: ${HOME}/Apps/Paseo-x86_64.AppImage
+                timeout: 10m
+            probeCommand: "test -x $HOME/Apps/Paseo-x86_64.AppImage"

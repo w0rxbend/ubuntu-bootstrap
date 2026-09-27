@@ -1,0 +1,48 @@
+# 90-session.yaml - module "session"
+#
+# Final session-level changes; always the LAST module of ./bootstrap.sh:
+#   - login shell -> /usr/bin/zsh (already zsh on this host, so the typed probe skips it)
+#   - add the user to the docker, libvirt and kvm groups
+#   - prompt-logout: the run stops here (exit 75) and asks you to log out and back in
+#
+# Run alone:  ./bootstrap.sh --only session
+#
+# Caveats:
+#   - The groups are created by docker-ce (20-docker) and libvirt-daemon-system (00-base). If
+#     either is missing, session-groups fails, the phase is recorded as failed and the logout
+#     prompt is NOT shown. Fix the missing module, then re-run this one.
+#   - Group membership and the new login shell only apply to new login sessions.
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: zorin-session
+  labels: { distro: zorin, module: session }
+spec:
+  target:
+    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+  phases:
+    - name: host-check
+      description: "Refuse to run anywhere but Zorin OS 18 / Ubuntu 24.04 noble"
+      steps:
+        - name: session-host-check
+          kind: assert
+          spec:
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
+            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+
+    - name: session
+      description: "Login shell and group memberships, then ask for a logout"
+      dependsOn: [host-check]
+      restartPolicy:
+        type: prompt-logout
+        message: "Log out and back in (or reboot) so the docker/libvirt/kvm groups and the zsh login shell take effect. Then run: ./bootstrap.sh --only post-checks"
+      steps:
+        - name: session-login-shell
+          kind: default-shell
+          spec:
+            shell: /usr/bin/zsh
+        - name: session-groups
+          kind: user-groups
+          execution: { continueOnError: true }
+          spec:
+            groups: [docker, libvirt, kvm]
