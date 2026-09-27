@@ -2,6 +2,9 @@
 # Terminal-critical families first: VictorMono (alacritty, ghostty, wezterm),
 # FiraCode (kitty), JetBrainsMono, symbols-only fallback.
 # nerd-fonts-installer v1.0.7 config. Installs into ~/.local/share/fonts/NerdFonts.
+# The full list (all 42 families, one file) is the system-bootstrap clone's
+# .files/.config/nerd-fonts-installer/config.yaml, linked to ~/.config/nerd-fonts-installer/.
+# The four batches together must match it (tests/assertions/binaries.sh checks this).
 release: latest
 destination: ~/.local/share/fonts/NerdFonts
 refresh_font_cache: true

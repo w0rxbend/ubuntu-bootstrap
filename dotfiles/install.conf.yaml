@@ -40,9 +40,10 @@
     ~/.config/zorin-xdg-terminals.list: .config/xdg-terminals.list
     ~/.config/GNOME-xdg-terminals.list: .config/xdg-terminals.list
     ~/.config/environment.d/90-session.conf: .config/environment.d/90-session.conf
-    # Delegated-tool configs: the same files fluxion applies (profiles/40-binaries.yaml).
+    # binstaller: the Zorin fork fluxion applies (profiles/40-binaries.yaml), linked so a manual
+    # `binstaller apply` does the same thing. Why it is a fork and not the clone's file, and the drift
+    # check that keeps its versions in step: see the header of dotfiles/system-bootstrap.conf.yaml.
     ~/.config/binstaller/config.yaml: ../config/binstaller.yaml
-    ~/.config/nerd-fonts-installer/config.yaml: ../config/nerd-fonts/all.yaml
     # Agent skills: one real, git-tracked folder shared by every agent (see agents/skills/README.md).
     # Codex reads ~/.agents/skills natively. The optional agents are only linked when installed.
     ~/.agents/skills: agents/skills

@@ -13,8 +13,15 @@
 #     environment.d/90-dms.conf, mimeapps.list, xdg-terminals.list with Alacritty): niri/DMS desktop only
 #   - arch/ and fedora/ (their install.conf.yaml and *-system-update.sh): OS-specific
 #   - .config/vesktop/vencord-settings-backup.json: a backup you import by hand in Vencord
-#   - .config/binstaller/config.yaml and .config/nerd-fonts-installer/config.yaml: fluxion applies the
-#     Zorin copies in ~/.zorin-bootstrap/config/, so those are linked by dotfiles/install.conf.yaml instead
+#   - .config/binstaller/config.yaml: ~/.config/binstaller/config.yaml is linked by dotfiles/install.conf.yaml
+#     to ~/.zorin-bootstrap/config/binstaller.yaml, a deliberate Zorin fork that fluxion applies. It differs
+#     from the clone's file only where Zorin needs it: allowSudoSymlinks false (fluxion makes the root-owned
+#     /usr/local/bin nvim links itself), no /usr/bin nvim links, yq added, sha256 pins. Keeping it linked means
+#     a manual `binstaller apply` does exactly what the bootstrap does. The cost is drift: a version bump in
+#     the clone (renovate) does not reach the fork by itself, so tests/assertions/dotfiles.sh compares the
+#     fork's `versions:` with the clone's and reports every tool whose pin differs (skip + reason, so it is
+#     visible but does not fail a run). Port the bump into config/binstaller.yaml, or push the Zorin changes
+#     upstream behind an OS condition and link the clone's file here instead.
 # Zorin-only files (system-update script, kitty terminal lists, session env, ~/.custom.zsh overlay, agent
 # skills) are linked by dotfiles/install.conf.yaml from this repo.
 
@@ -64,6 +71,9 @@
     ~/.config/yazi/theme.toml: .config/yazi/theme.toml
     ~/.config/yazi/keymap.toml: .config/yazi/keymap.toml
     ~/.config/bottom/bottom.toml: .config/bottom/bottom.toml
+    # All 42 Nerd Font families, for a manual nerd-fonts-installer run. fluxion does not read it: it applies
+    # the same families in four batches (~/.zorin-bootstrap/config/nerd-fonts/0N-*.yaml, 15 min timeout each).
+    ~/.config/nerd-fonts-installer/config.yaml: .config/nerd-fonts-installer/config.yaml
     # PaperWM settings (a `dconf dump` of /org/gnome/shell/extensions/paperwm/). Only linked when the
     # PaperWM extension is installed; load it with:
     #   dconf load /org/gnome/shell/extensions/paperwm/ < ~/.config/paperwm/paperwm.conf

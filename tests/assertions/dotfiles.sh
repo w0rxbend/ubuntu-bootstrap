@@ -33,6 +33,24 @@ _zsh_finds() {
     [[ -n "$out" ]] && ! grep -q '=$' <<<"$out"
 }
 
+# Prints "tool<TAB>fork<TAB>clone" for every tool whose pin in `spec.versions` differs between the Zorin fork
+# config/binstaller.yaml and the clone's .files/.config/binstaller/config.yaml (tools only one side has are
+# listed with "-" for the other side).
+_binstaller_version_drift() {
+    python3 - "$ASSERT_REPO_DIR/config/binstaller.yaml" "$SB_DIR/.files/.config/binstaller/config.yaml" <<'PY'
+import sys, yaml
+def versions(path):
+    with open(path) as fh:
+        return (yaml.safe_load(fh).get("spec") or {}).get("versions") or {}
+fork, clone = versions(sys.argv[1]), versions(sys.argv[2])
+for tool in sorted(set(fork) | set(clone)):
+    if tool == "yq" and tool not in clone:  # Zorin-only addition, documented in config/binstaller.yaml
+        continue
+    if fork.get(tool) != clone.get(tool):
+        print(f"{tool}\t{fork.get(tool, '-')}\t{clone.get(tool, '-')}")
+PY
+}
+
 assert_dotfiles() {
     ASSERT_MODULE=dotfiles
     section "~/.system-bootstrap live clone"
@@ -44,8 +62,23 @@ assert_dotfiles() {
     else
         skip "clone up to date" "ASSERT_NETWORK=0"
     fi
-    check_sh "no dotfile copies left in this repo (dotfiles/ holds only Zorin-only files)" \
-        "cd '$ASSERT_REPO_DIR/dotfiles' && ! ls -A | grep -Evx 'agents|custom.zsh|install.conf.yaml|system-bootstrap.conf.yaml|zorin-system-update.sh|\\.config'"
+    # Content, not names: every git-tracked file of this repo against every git-tracked file under the clone's
+    # .files, byte for byte and with comments/quotes/whitespace normalised away. config/binstaller.yaml is not
+    # allow-listed: it is a real fork (different content), so it never matches; the drift check below covers it.
+    check "no file of this repo is a copy of a system-bootstrap dotfile (content check)" \
+        python3 "$ASSERT_REPO_DIR/tests/lib/find_copies.py" "$ASSERT_REPO_DIR" "$SB_DIR"
+    local drift
+    if drift="$(_binstaller_version_drift 2>&1)"; then
+        if [[ -z "$drift" ]]; then
+            _a_ok "config/binstaller.yaml pins the same versions as the clone's binstaller config"
+        else
+            while IFS=$'\t' read -r tool fork clone; do
+                skip "binstaller pin for $tool" "Zorin fork has $fork, system-bootstrap has $clone: port the bump into config/binstaller.yaml"
+            done <<<"$drift"
+        fi
+    else
+        _a_fail "compare config/binstaller.yaml with the clone's binstaller config" "$drift"
+    fi
 
     section "dotbot links (both configs, if: conditions evaluated)"
     check "scripts/dotfiles-link.sh --check: every applicable link resolves to its source" "$ASSERT_REPO_DIR/scripts/dotfiles-link.sh" --check
@@ -57,6 +90,7 @@ assert_dotfiles() {
     assert_link "$HOME/.config/ghostty" "$SB_DIR/.files/.config/ghostty"
     assert_link "$HOME/.config/zellij/config.kdl" "$SB_DIR/.files/.config/zellij/config.kdl"
     assert_link "$HOME/.config/yazi/yazi.toml" "$SB_DIR/.files/.config/yazi/yazi.toml"
+    assert_link "$HOME/.config/nerd-fonts-installer/config.yaml" "$SB_DIR/.files/.config/nerd-fonts-installer/config.yaml"
     # The linked yazi config must load in the pinned yazi (config/binstaller.yaml). The files come from the
     # system-bootstrap clone, so a format break there is reported (skip + reason), not fixed here: yazi then
     # stops at "Press <Enter> to continue with preset settings" on every start. Fix it upstream.

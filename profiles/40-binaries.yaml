@@ -29,8 +29,9 @@
 #   root links are made by the `neovim-system-links` phase below instead
 #   (sudo is kept warm by bootstrap.sh).
 # - The font phases are independent leaves; one failed batch does not block the
-#   others. The same configs are dotbot-linked for manual reruns
-#   (~/.config/nerd-fonts-installer/config.yaml = all 42 families). Neither tool is
+#   others. For manual reruns ~/.config/binstaller/config.yaml links config/binstaller.yaml
+#   and ~/.config/nerd-fonts-installer/config.yaml links the system-bootstrap clone's
+#   all-42-families file (the batches here must match it). Neither tool is
 #   put on PATH; after `fluxion tools install binstaller nerd-fonts-installer` run them
 #   from the cache: ~/.cache/fluxion/tools/binstaller/v0.5.0/binstaller apply --config ...
 #   and ~/.cache/fluxion/tools/nerd-fonts-installer/v1.0.7/nerd-fonts-installer --config ...

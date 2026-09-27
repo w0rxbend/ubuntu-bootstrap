@@ -31,6 +31,23 @@ assert_binaries() {
     local l
     for l in nvim neovim vim; do assert_link "/usr/local/bin/$l" "$a/neovim/bin/nvim"; done
 
+    section "Nerd Fonts batches = the full list in the system-bootstrap clone"
+    local sb_fonts="${SYSTEM_BOOTSTRAP_DIR:-$HOME/.system-bootstrap}/.files/.config/nerd-fonts-installer/config.yaml"
+    if [[ -f "$sb_fonts" ]]; then
+        check "config/nerd-fonts/0N-*.yaml together list exactly the clone's families" python3 - "$sb_fonts" \
+            "$ASSERT_REPO_DIR"/config/nerd-fonts/0*.yaml <<'PY'
+import sys, yaml
+fams = lambda p: {str(f) for f in (yaml.safe_load(open(p)) or {}).get("families") or []}
+full = fams(sys.argv[1])
+batches = set().union(*(fams(p) for p in sys.argv[2:]))
+if full != batches:
+    print("only in the clone:", sorted(full - batches), "only in the batches:", sorted(batches - full))
+    sys.exit(1)
+PY
+    else
+        skip "Nerd Fonts batches vs the clone's list" "no ~/.system-bootstrap clone yet (made by the dotfiles module)"
+    fi
+
     section "Nerd Fonts (one family per batch, plus the terminals' fonts)"
     if command -v fc-list >/dev/null 2>&1; then
         local f
