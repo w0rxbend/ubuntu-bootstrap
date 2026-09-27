@@ -172,29 +172,42 @@ if [[ $CONTAINER -eq 1 ]]; then
         die "docker is not usable (install it with ./bootstrap.sh --only docker; run sudo -v first)"
     fi
     image="zorin-bootstrap-test:noble"
-    say "building $image (tests/container/Dockerfile)"
+    say "building $image (tests/container/Dockerfile: ubuntu:24.04 + tests/container/zorin-baseline.txt)"
     "${DOCKER[@]}" build -q -t "$image" \
         --build-arg "USER_NAME=$USER" --build-arg "USER_UID=$(id -u)" --build-arg "USER_GID=$(id -g)" \
         -f tests/container/Dockerfile tests/container >/dev/null
-    say "running ${MODULES[*]} in a container (stages: $STAGES); logs: $LOG_DIR"
-    # Same user, uid and paths as on the host, so ${HOME}-based profile paths and the generated absolute config
-    # paths are valid inside. The repo is mounted read-write (tests/generated is rewritten with the same content).
-    # The dynamically linked dev build needs its libraries in the image (see the Dockerfile).
-    inner=(--in-container --only "$ONLY_CSV" --stages "$STAGES" --log-dir "$LOG_DIR")
+    # A fresh machine gets the repo by `git clone`, so the container does too: only COMMITTED content is tested.
+    if [[ -n "$(git -C "$REPO_DIR" status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+        printf '%swarn%s uncommitted changes in %s are NOT part of the container test (it clones HEAD %s)\n' \
+            "$Y" "$N" "$REPO_DIR" "$(git -C "$REPO_DIR" rev-parse --short HEAD)" >&2
+    fi
+    cname="zorin-bootstrap-test-$(date +%Y%m%d-%H%M%S)"
+    say "running ${MODULES[*]} in container $cname (stages: $STAGES); logs: $LOG_DIR"
+    # Same user, uid and home path as on the host, so ${HOME}-based profile paths are valid inside. The host repo
+    # is mounted read-only at /src/zorin-bootstrap and cloned to ~/.zorin-bootstrap (the path the profiles
+    # hard-code); logs go to /logs = $LOG_DIR. The fluxion binary is mounted read-only (a dynamically linked dev
+    # build finds its libraries in the image: they ship with Zorin, see zorin-baseline.txt).
+    inner=(--in-container --only "$ONLY_CSV" --stages "$STAGES" --log-dir /logs)
     [[ $STRICT -eq 1 ]] && inner+=(--strict-idempotency)
     set +e
-    "${DOCKER[@]}" run --rm \
-        -v "$REPO_DIR:$REPO_DIR" \
-        -v "$LOG_DIR:$LOG_DIR" \
+    "${DOCKER[@]}" run --rm --name "$cname" \
+        -v "$REPO_DIR:/src/zorin-bootstrap:ro" \
+        -v "$LOG_DIR:/logs" \
         -v "$FLUXION_BIN:/usr/local/bin/fluxion:ro" \
-        -e FLUXION_BIN=/usr/local/bin/fluxion -e ASSERT_CONTEXT=container -e "ASSERT_NETWORK=${ASSERT_NETWORK:-1}" \
-        -e NO_COLOR=1 -w "$REPO_DIR" "$image" \
-        "$REPO_DIR/tests/run-tests.sh" "${inner[@]}"
+        -e FLUXION_BIN=/usr/local/bin/fluxion -e ASSERT_CONTEXT=container -e TEST_CONTEXT=container \
+        -e "ASSERT_NETWORK=${ASSERT_NETWORK:-1}" -e NO_COLOR=1 "$image" \
+        bash -c 'set -e; git clone -q /src/zorin-bootstrap "$HOME/.zorin-bootstrap"
+                 echo "==> cloned $(git -C "$HOME/.zorin-bootstrap" log -1 --format="%h %s") to ~/.zorin-bootstrap"
+                 exec "$HOME/.zorin-bootstrap/tests/run-tests.sh" "$@"' _ "${inner[@]}"
     rc=$?
     set -e
     exit $rc
 fi
-if [[ $IN_CONTAINER -eq 1 ]]; then export ASSERT_CONTEXT=container; fi
+if [[ $IN_CONTAINER -eq 1 ]]; then
+    # TEST_CONTEXT=container makes gen-test-profiles.sh (also when bootstrap.sh --test calls it) drop the steps
+    # that need systemd/snapd; they are listed in tests/generated/container-skips.tsv and reported below.
+    export ASSERT_CONTEXT=container TEST_CONTEXT=container
+fi
 
 # ---- run ------------------------------------------------------------------------------------------------------
 declare -A RESULT=()
@@ -213,6 +226,23 @@ say "logs:    $LOG_DIR"
 
 tests/gen-test-profiles.sh --quiet
 tests/gen-test-profiles.sh --check --quiet >/dev/null || die "generated profiles out of date after regeneration"
+
+# Container mode: the steps the container cannot run are dropped from the test profiles. Say so, per module, and
+# keep the list with the logs, so a skipped step is never mistaken for a tested one.
+CONTAINER_SKIPS=()
+if [[ "${TEST_CONTEXT:-}" == container ]]; then
+    : >"$LOG_DIR/container-skips.tsv"
+    for m in "${MODULES[@]}"; do
+        while IFS=$'\t' read -r _ phase step kind reason; do
+            printf '%s\t%s\t%s\t%s\t%s\n' "$m" "$phase" "$step" "$kind" "$reason" >>"$LOG_DIR/container-skips.tsv"
+            CONTAINER_SKIPS+=("$m: step $step ($kind, phase $phase): $reason")
+        done < <(awk -F'\t' -v f="$(module_file "$m")" '$1 == f' tests/generated/container-skips.tsv)
+    done
+    if [[ ${#CONTAINER_SKIPS[@]} -gt 0 ]]; then
+        say "container mode: ${#CONTAINER_SKIPS[@]} step(s) removed from the test profiles (NOT tested here):"
+        printf '    %sSKIP%s %s\n' "$Y" "$N" "${CONTAINER_SKIPS[@]}"
+    fi
+fi
 
 if has_stage validate; then
     say "stage validate"
@@ -343,6 +373,12 @@ done
         for s in ${STAGES//,/ }; do printf '%s\t%s\t%s\n' "$m" "$s" "${RESULT["$m/$s"]:-"-"}"; done
     done
 } >"$LOG_DIR/summary.tsv"
+
+if [[ ${#CONTAINER_SKIPS[@]} -gt 0 ]]; then
+    printf '\n%sNot tested in the container%s (steps removed from the test profiles; %s):\n' "$Y" "$N" \
+        "$LOG_DIR/container-skips.tsv"
+    printf '  %s\n' "${CONTAINER_SKIPS[@]}"
+fi
 
 if [[ $FAILURES -gt 0 ]]; then
     printf '\n%s%d check(s) failed.%s Logs: %s\n' "$R" "$FAILURES" "$N" "$LOG_DIR"

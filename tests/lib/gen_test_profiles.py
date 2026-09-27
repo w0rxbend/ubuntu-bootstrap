@@ -10,7 +10,15 @@ A test profile is the production profile, 1:1, except for what would stop or pau
   * relative `config:` / `configPath:` / `script:` paths   -> made absolute (the file moves directories)
 
 Everything else (names, vars, probes, scripts, ordering) is copied unchanged, so the tests exercise exactly what
-production runs. Usage: gen_test_profiles.py REPO_DIR OUT_DIR [--check] [--quiet]
+production runs.
+
+With --container (or TEST_CONTEXT=container, set by `tests/run-tests.sh --container` inside the throwaway
+container) steps that cannot work without systemd as PID 1 or snapd are removed as well (CONTAINER_SKIPS and
+CONTAINER_SKIP_KINDS below). Each one is listed in the generated file's header comment and in
+OUT_DIR/container-skips.tsv (module file, step, reason), which run-tests.sh prints and copies to its log dir, so
+nothing is skipped silently. A name in CONTAINER_SKIPS that no profile has any more is an error.
+
+Usage: gen_test_profiles.py REPO_DIR OUT_DIR [--check] [--quiet] [--container]
 """
 
 import difflib
@@ -23,6 +31,16 @@ import yaml
 HALTING_KINDS = {"interrupt", "manual", "shell-reload"}
 HALTING_RESTART = {"prompt-logout", "requires-new-shell"}
 PATH_KEYS = {"config", "configPath", "script"}
+
+# Container mode only: step kinds that always need systemd as PID 1, and single steps (by name) that need a
+# daemon a plain container does not run. Everything else runs in the container exactly as on the host.
+CONTAINER_SKIP_KINDS = {
+    "systemd-unit": "systemctl needs systemd as PID 1",
+    "system-setting": "timedatectl needs systemd as PID 1 (systemd-timedated)",
+}
+CONTAINER_SKIPS = {
+    "ghostty": "snap install needs snapd (systemd service)",
+}
 
 
 class StrictLoader(yaml.SafeLoader):
@@ -70,7 +88,11 @@ def _str(dumper, value):
 Dumper.add_representer(str, _str)
 
 
-def transform(doc, src_dir, notes):
+def container_skip_reason(step):
+    return CONTAINER_SKIP_KINDS.get(step.get("kind")) or CONTAINER_SKIPS.get(step.get("name"))
+
+
+def transform(doc, src_dir, notes, container=False, skipped=None):
     phases = doc.get("spec", {}).get("phases", [])
     removed_phases = set()
     kept = []
@@ -83,6 +105,11 @@ def transform(doc, src_dir, notes):
         for step in phase.get("steps") or []:
             if step.get("kind") in HALTING_KINDS:
                 notes.append(f"phase {phase['name']}: removed {step['kind']} step {step['name']}")
+                continue
+            reason = container_skip_reason(step) if container else None
+            if reason:
+                notes.append(f"CONTAINER: phase {phase['name']}: skipped {step['kind']} step {step['name']} ({reason})")
+                skipped.append((phase["name"], step["name"], step.get("kind", "?"), reason))
                 continue
             spec = step.get("spec")
             if isinstance(spec, dict):
@@ -133,14 +160,16 @@ def absolute(value, src_dir, notes, step):
     return new
 
 
-def render(src, repo):
+def render(src, repo, container=False, skipped=None):
     with open(src) as fh:
         doc = yaml.load(fh, Loader=StrictLoader)
     notes = []
-    doc = transform(doc, os.path.dirname(src), notes)
+    doc = transform(doc, os.path.dirname(src), notes, container, skipped)
     rel = os.path.relpath(src, repo)
     out = io.StringIO()
     out.write(f"# GENERATED from {rel} by tests/gen-test-profiles.sh. Do not edit; edit {rel} and regenerate.\n")
+    if container:
+        out.write("# CONTAINER variant (TEST_CONTEXT=container): steps marked CONTAINER below are NOT tested here.\n")
     out.write("# Test variant: identical to production except for these changes (nothing may halt the run):\n")
     for n in notes or ["(none: the production profile has no halting steps)"]:
         out.write(f"#   - {n}\n")
@@ -158,6 +187,7 @@ def main(argv):
     repo, outdir = os.path.abspath(argv[1]), os.path.abspath(argv[2])
     check = "--check" in argv
     quiet = "--quiet" in argv
+    container = "--container" in argv or os.environ.get("TEST_CONTEXT") == "container"
     prod = os.path.join(repo, "profiles")
     sources = []
     for root, _dirs, files in os.walk(prod):
@@ -166,11 +196,14 @@ def main(argv):
     drift = 0
     manifest = []
     wanted = set()
+    skips = []  # (profile rel path, phase, step, kind, reason)
     for src in sources:
         rel = os.path.relpath(src, prod)
         dest = os.path.join(outdir, rel)
         wanted.add(dest)
-        text, notes = render(src, repo)
+        skipped = []
+        text, notes = render(src, repo, container, skipped)
+        skips += [(os.path.join("profiles", rel), *s) for s in skipped]
         manifest.append((rel, len(notes)))
         old = open(dest).read() if os.path.exists(dest) else None
         if check:
@@ -186,6 +219,25 @@ def main(argv):
             os.replace(dest + ".tmp", dest)
         if not quiet:
             print(f"{'changed' if old != text else 'same   '}  {os.path.relpath(dest, repo)}  ({len(notes)} change(s))")
+    if container:
+        stale = set(CONTAINER_SKIPS) - {s[2] for s in skips}
+        if stale:
+            print(f"CONTAINER_SKIPS names steps no profile has: {sorted(stale)}", file=sys.stderr)
+            return 1
+    skip_file = os.path.join(outdir, "container-skips.tsv")
+    skip_text = "".join("\t".join(s) + "\n" for s in skips) if container else None
+    old_skips = open(skip_file).read() if os.path.exists(skip_file) else None
+    if check:
+        if skip_text != old_skips:
+            drift += 1
+            print(f"container-skips.tsv out of date (container mode: {container})")
+    elif skip_text is None:
+        if old_skips is not None:
+            os.remove(skip_file)
+    elif skip_text != old_skips:
+        os.makedirs(outdir, exist_ok=True)
+        with open(skip_file, "w") as fh:
+            fh.write(skip_text)
     # Stale generated files whose production profile is gone.
     if os.path.isdir(outdir):
         for root, _dirs, files in os.walk(outdir):

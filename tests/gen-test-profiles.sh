@@ -13,6 +13,8 @@
 #   tests/gen-test-profiles.sh            # write tests/generated/ (only files whose content changed)
 #   tests/gen-test-profiles.sh --check    # exit 1 and show a diff when tests/generated/ is out of date
 #   tests/gen-test-profiles.sh --quiet    # no per-file output
+#   tests/gen-test-profiles.sh --container   # container variant (also TEST_CONTEXT=container): drop the steps
+#                                            # that need systemd/snapd, listed in tests/generated/container-skips.tsv
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -21,9 +23,9 @@ OUT_DIR="$REPO_DIR/tests/generated"
 args=()
 for a in "$@"; do
     case "$a" in
-        --check | --quiet) args+=("$a") ;;
+        --check | --quiet | --container) args+=("$a") ;;
         -h | --help)
-            sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *)
