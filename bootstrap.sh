@@ -510,8 +510,13 @@ run_profile() {
         # Keep fluxion's output on screen and read its Summary line afterwards.
         local log
         log="$(mktemp)"
-        "${cmd[@]}" 2>&1 | tee "$log" || true
-        rc=${PIPESTATUS[0]}
+        # Not `... | tee || true; rc=${PIPESTATUS[0]}`: under pipefail a failing fluxion runs `true`,
+        # which resets PIPESTATUS to (0) and reported every failed module as ok.
+        if "${cmd[@]}" 2>&1 | tee "$log"; then
+            rc=0
+        else
+            rc=${PIPESTATUS[0]}
+        fi
         LAST_COUNTS="$(summary_counts "$log")"
         rm -f "$log"
     else
