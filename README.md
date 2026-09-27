@@ -295,7 +295,7 @@ Optional modules (`./bootstrap.sh --only NAME`):
 | `zorin-pro-parity` | The 35 flatpaks that Zorin OS **Pro** preinstalls, for a Zorin Core install or a reinstall without Pro |
 | `gnome-extensions` | `gext` (pipx) plus user-theme, battery-indicator-icon, notification-icons, tophat, space-bar, AlphabeticalAppGrid, installed with `gext -F` (no GNOME Shell dialog) |
 | `wallpapers` | Sparse clone of the wallpapers from the old repo into `~/.local/share/backgrounds/system-bootstrap` (about 109 MB) |
-| `post-checks` | Run after logging back in. Checks the docker group, `docker run hello-world`, the zsh login shell, fonts, nvim, the core CLIs and that the Vicinae extension is active, then reminds you of the manual steps |
+| `post-checks` | Run after logging back in. Checks the docker group, `docker run hello-world`, the zsh login shell, fonts, nvim, the core CLIs, that the Vicinae server answers and its extension is active, then reminds you of the manual steps. Run before the re-login it fails only the docker-group, `docker run` and extension checks (`--show-output` says whether a log out/in is all that is missing) |
 
 ---
 

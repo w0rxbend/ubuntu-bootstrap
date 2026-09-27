@@ -3,8 +3,10 @@
 #
 # Run alone:   ./bootstrap.sh --only post-checks
 # Contents:    - verify: assert steps (docker group + daemon, zsh login shell, VictorMono Nerd Font, neovim,
-#                key CLI binaries, Vicinae extension active + server answering). Each is its own leaf phase so
-#                every check reports independently.
+#                key CLI binaries, Vicinae server answering, Vicinae extension active). Each is its own leaf
+#                phase so every check reports independently; the session-bound ones (docker group, extension)
+#                say on stderr whether only a log out/in is missing or the install itself is (shown with
+#                ./bootstrap.sh --only post-checks --show-output).
 #              - manual steps with probes: gh login, SSH key, duplicate Telegram flatpak removed. They pass once
 #                the probe succeeds; until then they fail with the instruction in the message.
 # Caveats:     - `docker run --rm hello-world` pulls a tiny image from Docker Hub (network needed).
@@ -34,7 +36,11 @@ spec:
         - name: post-docker-group
           kind: assert
           spec:
-            command: "id -nG | grep -qw docker"
+            command: >-
+              id -nG | grep -qw docker && exit 0;
+              if id -nG "$USER" | grep -qw docker; then echo "$USER is in the docker group, but this session started before it was added" >&2;
+              else echo "$USER is not in the docker group at all (run ./bootstrap.sh --only docker)" >&2; fi;
+              exit 1
             message: "Current session is not in the docker group: log out and back in (or reboot) after 90-session"
 
     - name: verify-docker-run
@@ -87,14 +93,31 @@ spec:
               if [ -n "$missing" ]; then echo "missing:$missing" >&2; exit 1; fi
             message: "Key CLI binaries missing (see output): run ./bootstrap.sh --only toolchains and --only binaries"
 
-    - name: verify-vicinae
+    - name: verify-vicinae-server
+      dependsOn: [host-check]
+      steps:
+        - name: post-vicinae-server
+          kind: assert
+          spec:
+            command: "/usr/local/bin/vicinae ping >/dev/null"
+            message: "Vicinae: the server does not answer. Check: systemctl --user status vicinae (or ./bootstrap.sh --only vicinae)"
+
+    - name: verify-vicinae-extension
       dependsOn: [host-check]
       steps:
         - name: post-vicinae-extension-active
           kind: assert
           spec:
-            command: "gnome-extensions info vicinae@dagimg-dot 2>/dev/null | grep -Eq 'State: (ACTIVE|ENABLED)' && /usr/local/bin/vicinae ping >/dev/null"
-            message: "Vicinae: the GNOME extension is not active or the server does not answer. Log out/in after ./bootstrap.sh --only vicinae; check: systemctl --user status vicinae"
+            # A running Wayland shell never picks up an extension unpacked after it started, so "installed and
+            # enabled but unknown to this shell" means: log out/in. Anything else means the install is broken.
+            command: >-
+              gnome-extensions info vicinae@dagimg-dot 2>/dev/null | grep -Eq 'State: (ACTIVE|ENABLED)' && exit 0;
+              if test -f "$HOME/.local/share/gnome-shell/extensions/vicinae@dagimg-dot/metadata.json" &&
+              gsettings get org.gnome.shell enabled-extensions | grep -qF "'vicinae@dagimg-dot'"; then
+              echo "vicinae@dagimg-dot is installed and enabled; the running shell loads it after the next log out/in" >&2;
+              else echo "vicinae@dagimg-dot is not installed or not enabled (run ./bootstrap.sh --only vicinae)" >&2; fi;
+              exit 1
+            message: "Vicinae: the GNOME extension is not active in this session. Log out/in after ./bootstrap.sh --only vicinae"
 
     - name: manual-gh-auth
       dependsOn: [host-check]
