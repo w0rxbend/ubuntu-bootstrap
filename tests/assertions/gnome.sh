@@ -77,8 +77,19 @@ assert_gnome() {
 
     section "other settings"
     assert_gsetting org.gnome.shell.keybindings show-screenshot-ui "['<Super>Print', 'Print']"
-    check_sh "favourites include Ghostty, Vesktop, ChatGPT, Claude and Paseo" \
-        "f=\$(gsettings get org.gnome.shell favorite-apps); for a in ghostty_ghostty.desktop dev.vencord.Vesktop.desktop chatgpt.desktop com.anthropic.Claude.desktop paseo.desktop; do grep -qF \"'\$a'\" <<<\"\$f\" || exit 1; done"
+    # gnome-favorite-apps writes the list once (its probe: Vesktop pinned) and then keeps hand edits, so only
+    # that is required; pins of the declared list that were removed by hand are reported, not failed.
+    local fav a unpinned=()
+    fav="$(gsettings get org.gnome.shell favorite-apps 2>/dev/null)"
+    check "favourites written (Vesktop pinned: the gnome-favorite-apps probe)" grep -qF "'dev.vencord.Vesktop.desktop'" <<<"$fav"
+    for a in ghostty_ghostty.desktop chatgpt.desktop com.anthropic.Claude.desktop paseo.desktop; do
+        grep -qF "'$a'" <<<"$fav" || unpinned+=("$a")
+    done
+    if [[ ${#unpinned[@]} -eq 0 ]]; then
+        _a_ok "favourites include Ghostty, ChatGPT, Claude and Paseo"
+    else
+        skip "favourites include Ghostty, ChatGPT, Claude and Paseo" "unpinned by hand, kept: ${unpinned[*]}"
+    fi
     section "live session (mutter)"
     if command -v xprop >/dev/null 2>&1 && [[ -n "${DISPLAY:-}" ]]; then
         check_sh "mutter runs 9 workspaces (_NET_NUMBER_OF_DESKTOPS)" \

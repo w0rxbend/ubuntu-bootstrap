@@ -441,7 +441,8 @@ run inside the logged-in GNOME session and asserts that `DBUS_SESSION_BUS_ADDRES
 It also sets the dash/taskbar favourites to what I pinned by hand: Brave, Files, Software, Ghostty, Terminal,
 Telegram (the snap), Vesktop, ChatGPT, Claude and Paseo (`org.gnome.shell favorite-apps`). `gnome` runs after `apps`,
 `shell` and `desktop-apps`, so those `.desktop` IDs exist by then. The list is only written while Vesktop is not
-pinned yet, so pins changed by hand later are left alone.
+pinned yet, so pins changed by hand later are left alone. The assertion follows that: it requires Vesktop and only
+reports (skip) the other declared pins that were removed by hand.
 
 `tests/assertions/gnome.sh` also checks that the running mutter has 9 workspaces (`_NET_NUMBER_OF_DESKTOPS` on the
 Xwayland root window). With `ASSERT_LIVE_INPUT=1` it goes further: it presses `Super+3` and then `Super+1` through a
