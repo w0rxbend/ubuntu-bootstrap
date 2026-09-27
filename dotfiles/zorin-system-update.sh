@@ -29,7 +29,7 @@ export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.juliaup/bin:$HOME/.local/s
 # ---------------------------------------------------------------- apt
 section "APT (update, full-upgrade, autoremove)"
 if have apt-get; then
-  sudo -v || failed+=("sudo")
+  sudo -n true 2>/dev/null || sudo -v || failed+=("sudo")
   run "apt update" sudo apt update \
     && run "apt full-upgrade" sudo apt full-upgrade -y \
     && run "apt autoremove" sudo apt autoremove -y

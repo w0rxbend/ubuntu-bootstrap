@@ -151,7 +151,8 @@ Before any module runs, the script does these checks and setup steps:
   0.3.1.
 - It exports a PATH that includes every tool location the modules create: `~/.cargo/bin`, `~/.local/bin`,
   `~/.go/bin`, `~/.apps/{dotbot,neovim,yq,helm,kustomize}/bin`, `~/.local/share/pnpm/bin` and juliaup.
-- It runs `sudo -v` once and then refreshes the ticket with `sudo -n -v` every 50 s until the script exits.
+- It runs `sudo -v` once (skipped when `sudo -n true` already works, e.g. under NOPASSWD, where `sudo -v` can
+  still ask for a password) and then refreshes the ticket every 50 s until the script exits.
 
 Each module is validated before it is applied. The exit code is 0 when everything succeeded or the log-out
 checkpoint was reached, and 1 when any module failed.

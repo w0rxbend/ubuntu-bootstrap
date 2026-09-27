@@ -384,12 +384,17 @@ trap 'echo; warn "interrupted"; exit $EXIT_INTERRUPTED' INT TERM
 
 if [[ "$MODE" == apply ]]; then
     command -v sudo >/dev/null 2>&1 || die "sudo is required"
-    info "fluxion runs privileged steps with 'sudo -n'. Authenticate once (prompted by sudo itself):"
-    sudo -v || die "sudo authentication failed"
+    # `sudo -n true` first: with a NOPASSWD rule plus the stock `%sudo ... ALL` rule, sudoers' default
+    # verifypw=all makes `sudo -v` ask for a password although every `sudo -n CMD` works.
+    if ! sudo -n true 2>/dev/null; then
+        info "fluxion runs privileged steps with 'sudo -n'. Authenticate once (prompted by sudo itself):"
+        sudo -v || die "sudo authentication failed"
+    fi
     parent_pid=$$
     (
+        # Running a command refreshes the ticket too, and also works where `sudo -n -v` is refused.
         while kill -0 "$parent_pid" 2>/dev/null; do
-            sudo -n -v 2>/dev/null || exit 0
+            sudo -n -v 2>/dev/null || sudo -n true 2>/dev/null || exit 0
             sleep 50
         done
     ) &
