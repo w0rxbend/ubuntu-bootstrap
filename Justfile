@@ -67,30 +67,45 @@ state NAME:
 state-reset NAME:
     fluxion state reset {{ NAME }} --force
 
-# --- Dotfiles ------------------------------------------------------------------------------
+# --- Dotfiles and skills --------------------------------------------------------------------
 
-# Re-link dotfiles directly with dotbot-go (use after editing dotfiles/install.conf.yaml)
+# Re-link the dotfiles: back up what is in the way, then dotbot for ~/.system-bootstrap/.files and dotfiles/
 dotfiles:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if command -v dotbot >/dev/null 2>&1; then
-        bin="$(command -v dotbot)"
-    elif [ -x "$HOME/.apps/dotbot/bin/dotbot" ]; then
-        bin="$HOME/.apps/dotbot/bin/dotbot"
-    elif [ -x "$HOME/.cache/fluxion/tools/dotbot/v0.4.2/dotbot" ]; then
-        bin="$HOME/.cache/fluxion/tools/dotbot/v0.4.2/dotbot"
-    else
-        echo "dotbot not found; run: just apply binaries   (or: fluxion tools install dotbot)" >&2
-        exit 1
-    fi
-    "$bin" -d "{{ justfile_directory() }}/dotfiles" -c "{{ justfile_directory() }}/dotfiles/install.conf.yaml"
+    scripts/dotfiles-link.sh
 
-# Preview dotbot changes without touching $HOME
+# Preview the backups and dotbot changes without touching $HOME
 dotfiles-dry:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    bin="$(command -v dotbot || echo "$HOME/.apps/dotbot/bin/dotbot")"
-    "$bin" -n -d "{{ justfile_directory() }}/dotfiles" -c "{{ justfile_directory() }}/dotfiles/install.conf.yaml"
+    scripts/dotfiles-link.sh --dry-run
+
+# Exit 0 only when every dotfile link resolves to its source
+dotfiles-check:
+    scripts/dotfiles-link.sh --check
+
+# Clone ~/.system-bootstrap if missing, else fast-forward it (never clobbers local changes)
+dotfiles-pull:
+    scripts/system-bootstrap-sync.sh
+
+# Point every installed agent (Claude, Cursor, Gemini, Copilot, opencode) at the shared skills folder
+skills:
+    scripts/link-skills.sh
+
+# --- Tests ---------------------------------------------------------------------------------
+
+# Full test run: validate, apply, idempotency re-apply, assertions (tests/run-tests.sh --help)
+test *ARGS:
+    tests/run-tests.sh {{ ARGS }}
+
+# Read-only: regenerate + validate --strict + lint + dry-run every test profile
+test-validate *ARGS:
+    tests/run-tests.sh --stages validate --with-optional {{ ARGS }}
+
+# Read-only: post-condition assertions only (e.g. just test-assert --only gnome,vicinae)
+test-assert *ARGS:
+    tests/run-tests.sh --assert-only {{ ARGS }}
+
+# Regenerate tests/generated/ from profiles/
+test-gen:
+    tests/gen-test-profiles.sh
 
 # --- Maintenance ---------------------------------------------------------------------------
 
@@ -108,6 +123,12 @@ refresh-binaries:
 refresh-fonts:
     fluxion apply -c profiles/40-binaries.yaml --profile binaries --phase fonts-core,fonts-more,fonts-rest,fonts-noto --no-tui
 
+# --- Modules with their own recipe --------------------------------------------------------
+
+# Vicinae launcher, its user service and GNOME extension, Super+D (default module)
+vicinae:
+    ./bootstrap.sh --only vicinae
+
 # --- Optional modules ----------------------------------------------------------------------
 
 # OBS Studio + plugins (flatpak)
@@ -118,7 +139,7 @@ obs:
 pro-parity:
     ./bootstrap.sh --only zorin-pro-parity
 
-# Extra GNOME Shell extensions via gext
+# Extra GNOME Shell extensions via gext -F (no Shell confirmation dialog)
 gnome-extensions:
     ./bootstrap.sh --only gnome-extensions
 

@@ -1,0 +1,6 @@
+# shellcheck configuration for this repo (scripts/validate-all.sh runs shellcheck on every script).
+# SC2016: the test assertions pass shell snippets in single quotes on purpose (they expand in the child bash).
+# SC2088: "~/..." in messages is text for humans, not a path.
+# SC2317: trap handlers and functions invoked indirectly are reported as unreachable.
+disable=SC2016,SC2088,SC2317
+external-sources=true

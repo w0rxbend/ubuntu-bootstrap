@@ -1,8 +1,12 @@
-# dotbot-go (v0.4.2) configuration for the Zorin OS workstation.
-# Base directory = this directory (profiles/80-dotfiles.yaml passes -d explicitly).
-# Link sources starting with ../config/ point at the shared delegated-tool configs in the repo root.
-# Re-link after editing this file with:  just dotfiles   (or ./bootstrap.sh --only dotfiles)
-# Not linked on purpose: .config/vesktop/vencord-settings-backup.json (import it manually in Vencord).
+# dotbot-go (v0.4.2) config: the Zorin-ONLY dotfiles that live in this repo.
+#
+#   base directory (-d) = ~/.zorin-bootstrap/dotfiles
+#
+# The shared dotfiles (.zshrc, nvim, kitty, tmux, ...) are linked from the live clone ~/.system-bootstrap by
+# dotfiles/system-bootstrap.conf.yaml; this file only holds what has no equivalent in the original repo.
+# Both are run by scripts/dotfiles-link.sh (profiles/80-dotfiles.yaml, `just dotfiles`), which backs up
+# real files/directories at link targets into ~/.zorin-bootstrap-backup/ before dotbot replaces them.
+# Link sources starting with ../config/ point at the delegated-tool configs that fluxion applies.
 
 - defaults:
     link:
@@ -18,42 +22,17 @@
 
 # Explicit modes: dotbot-go v0.4.2 creates missing directories as 0777 otherwise.
 - create:
-    ~/Downloads: {mode: 0755}
     ~/Projects: {mode: 0755}
     ~/Apps: {mode: 0755}
     ~/AppImages: {mode: 0755}
     ~/.local/bin: {mode: 0755}
-    ~/.vim/undo-history: {mode: 0700}
-
-- shell:
-    - command -v conda >/dev/null 2>&1 && conda config --set changeps1 False || true
+    ~/.agents: {mode: 0755}
 
 - link:
-    ~/.zshrc: .zshrc
-    ~/.tmux.conf: .tmux.conf
-    ~/.ideavimrc: .ideavimrc
-    ~/.wezterm.lua: .wezterm.lua
-    ~/.hidden: .hidden
+    # Sourced by the shared .zshrc (`[ -f ~/.custom.zsh ] && source ~/.custom.zsh`): Zorin/Ubuntu
+    # adjustments and the PATH entries the installers (Claude Code, Codex, Kimi, cargo, pnpm) need.
+    ~/.custom.zsh: custom.zsh
     ~/system-update.sh: zorin-system-update.sh
-    ~/.config/starship.toml: starship.toml
-    ~/.config/alacritty/alacritty.toml: alacritty.toml
-    ~/.config/alacritty/theme.toml: alacritty_theme.toml
-    ~/.config/kitty/kitty.conf: kitty.conf
-    ~/.config/nvim: nvim
-    ~/.config/btop: .config/btop
-    ~/.config/ghostty: .config/ghostty
-    ~/.config/zathura/zathurarc: zathurarc
-    ~/.config/zellij/config.kdl: .config/zellij/config.kdl
-    ~/.config/zellij/layouts/default.kdl: .config/zellij/layouts/default.kdl
-    ~/.config/zellij/layouts/editor.kdl: .config/zellij/layouts/editor.kdl
-    ~/.config/zellij/layouts/media.kdl: .config/zellij/layouts/media.kdl
-    ~/.config/lazygit/config.yml: .config/lazygit/config.yml
-    ~/.config/lsd/config.yaml: .config/lsd/config.yaml
-    ~/.config/lsd/colors.yaml: .config/lsd/colors.yaml
-    ~/.config/yazi/yazi.toml: .config/yazi/yazi.toml
-    ~/.config/yazi/theme.toml: .config/yazi/theme.toml
-    ~/.config/yazi/keymap.toml: .config/yazi/keymap.toml
-    ~/.config/bottom/bottom.toml: .config/bottom/bottom.toml
     # kitty as default terminal. xdg-terminal-exec reads the desktop-specific lists first
     # (XDG_CURRENT_DESKTOP=zorin:GNOME), and Zorin seeds both with org.gnome.Terminal.desktop,
     # so all three point at the same file. The x-terminal-emulator alternative is set in 50-shell.
@@ -61,5 +40,22 @@
     ~/.config/zorin-xdg-terminals.list: .config/xdg-terminals.list
     ~/.config/GNOME-xdg-terminals.list: .config/xdg-terminals.list
     ~/.config/environment.d/90-session.conf: .config/environment.d/90-session.conf
+    # Delegated-tool configs: the same files fluxion applies (profiles/40-binaries.yaml).
     ~/.config/binstaller/config.yaml: ../config/binstaller.yaml
     ~/.config/nerd-fonts-installer/config.yaml: ../config/nerd-fonts/all.yaml
+    # Agent skills: one real, git-tracked folder shared by every agent (see agents/skills/README.md).
+    # Codex reads ~/.agents/skills natively. The optional agents are only linked when installed.
+    ~/.agents/skills: agents/skills
+    ~/.claude/skills: agents/skills
+    ~/.cursor/skills:
+      path: agents/skills
+      if: 'test -d "$HOME/.cursor"'
+    ~/.gemini/skills:
+      path: agents/skills
+      if: 'test -d "$HOME/.gemini"'
+    ~/.copilot/skills:
+      path: agents/skills
+      if: 'test -d "$HOME/.copilot"'
+    ~/.config/opencode/skills:
+      path: agents/skills
+      if: 'test -d "$HOME/.config/opencode"'

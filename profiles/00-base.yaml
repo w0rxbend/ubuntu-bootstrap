@@ -78,6 +78,9 @@ spec:
             packageManager: apt
             distUpgrade: true
             timeout: PT1H
+            # Satisfied when a simulated full-upgrade (against the current package lists) has nothing to do,
+            # so a --re-probe run does not upgrade again.
+            probeCommand: "apt-get -s -o Debug::NoLocking=1 dist-upgrade 2>/dev/null | grep -q '^0 upgraded, 0 newly installed, 0 to remove'"
 
     - name: apt-core
       description: "debconf preseeds and the core packages every other phase relies on"
@@ -117,6 +120,7 @@ spec:
               - debconf-utils
               - apt-transport-https
               - pciutils
+              - python3-yaml
 
     - name: apt-cli
       description: "Terminal tools (leaf)"
@@ -217,6 +221,8 @@ spec:
               - libncurses-dev
               - libxml2-dev
               - libxmlsec1-dev
+              - libyaml-dev
+              - libgmp-dev
               - libsecret-1-0
               - libsecret-1-dev
               - libsecret-tools

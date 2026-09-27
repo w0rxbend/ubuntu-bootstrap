@@ -1,0 +1,218 @@
+# 75-vicinae.yaml - module "vicinae": the Vicinae launcher on Zorin OS 18 (GNOME 46, Wayland), on Super+D.
+#
+# Installs:
+#   - Vicinae v0.29.0: the official AppImage, extracted into /usr/local by the official install script (both
+#     pinned by sha256; there is no .deb/PPA, and the release tarball is built against Arch's Qt6). Running the
+#     script as root also sets cap_dac_override on vicinae-input-server and loads uinput, which snippets and
+#     paste need.
+#   - the systemd user unit the installer ships (/usr/local/lib/systemd/user/vicinae.service), enabled + started:
+#     `vicinae toggle` does not start a server by itself
+#   - the vicinae@dagimg-dot GNOME Shell extension v1.7.2 (clipboard history, window switcher, paste, centring,
+#     close on focus loss on GNOME Wayland), installed into ~/.local/share/gnome-shell/extensions without the
+#     GNOME Shell confirmation dialog, and added to org.gnome.shell enabled-extensions
+#   - Super+D -> `vicinae toggle` as a GNOME custom shortcut (Vicinae's own global shortcuts need X11 or
+#     ext-hotkey-v1, which Mutter lacks). Zorin binds Super+D to show-desktop in its schema override, so that
+#     binding is reduced to Ctrl+Super+D and Ctrl+Alt+D first.
+#
+# Run alone:  ./bootstrap.sh --only vicinae      (inside the logged-in GNOME session)
+#
+# Caveats:
+#   - GNOME Shell only loads a newly installed extension after log out/in (Wayland). The 90-session logout
+#     checkpoint covers that; until then clipboard history and the window switcher do not work.
+#   - The install script aborts without TERM (`tput cols` under set -e), so the root wrapper exports TERM=dumb.
+#   - Do not start "Vicinae" from the app grid: its launcher runs `vicinae server --replace`, which fights the
+#     systemd copy (harmless, but pointless). Use Super+D.
+#   - Bumping: change the version in the URLs, file names and probes, and the two sha256 pins
+#     (curl -s https://api.github.com/repos/vicinaehq/vicinae/releases/latest | jq -r '.tag_name, (.assets[] |
+#     select(.name=="Vicinae-x86_64.AppImage").digest)'; curl -sL <install.sh URL> | sha256sum).
+#   - Undo: systemctl --user disable --now vicinae.service; sudo TERM=dumb bash install-v0.29.0.sh --uninstall;
+#     remove ~/.local/share/gnome-shell/extensions/vicinae@dagimg-dot;
+#     gsettings reset org.gnome.desktop.wm.keybindings show-desktop; remove the custom keybinding path.
+apiVersion: initkit.io/v1alpha1
+kind: WorkstationProfile
+metadata:
+  name: zorin-vicinae
+  labels: { distro: zorin, module: vicinae }
+spec:
+  target:
+    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+  vars:
+    vicinaeCache: "${HOME}/.cache/zorin-bootstrap/vicinae"
+  phases:
+    - name: host-check
+      description: "Zorin OS 18 / noble, curl + jq + unzip, running inside the GNOME session"
+      steps:
+        - name: vicinae-host-check
+          kind: assert
+          spec:
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release && command -v jq >/dev/null && command -v curl >/dev/null && command -v unzip >/dev/null"
+            message: "Zorin OS 18 / noble with curl, jq and unzip (00-base) required"
+        - name: vicinae-session-check
+          kind: assert
+          spec:
+            command: "command -v gsettings >/dev/null && test -n \"$DBUS_SESSION_BUS_ADDRESS\" && systemctl --user is-active graphical-session.target >/dev/null"
+            message: "Run from the logged-in GNOME session (gsettings + systemd user session)"
+
+    - name: vicinae-install
+      description: "Pinned AppImage -> /usr/local via the pinned official install script (run as root)"
+      dependsOn: [host-check]
+      execution: { continueOnError: false }
+      steps:
+        - name: vicinae-app
+          kind: shell-scripts
+          spec:
+            shell: bash
+            # One probe for the three items below: nothing runs once v0.29.0 is installed.
+            probeCommand: "/usr/local/bin/vicinae version 2>/dev/null | grep -q 'Version v0.29.0'"
+            scripts:
+              - name: vicinae-download
+                args: ["${vicinaeCache}"]
+                timeout: 10m
+                content: |
+                  set -euo pipefail
+                  d="$1"
+                  mkdir -p "$d"
+                  fetch() { # url dest sha256; reuses a cached file whose checksum matches
+                    if [ -f "$2" ] && echo "$3  $2" | sha256sum -c --quiet - >/dev/null 2>&1; then return 0; fi
+                    curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "$2.part" "$1"
+                    echo "$3  $2.part" | sha256sum -c --quiet -
+                    mv -f "$2.part" "$2"
+                  }
+                  fetch https://github.com/vicinaehq/vicinae/releases/download/v0.29.0/Vicinae-x86_64.AppImage \
+                    "$d/Vicinae-x86_64-v0.29.0.AppImage" 4d32f7589f857ee6229da95269c6a3109fc3093152c2d6f29042f7d924fe86bc
+                  fetch https://raw.githubusercontent.com/vicinaehq/vicinae/v0.29.0/scripts/install.sh \
+                    "$d/install-v0.29.0.sh" cbf9da4bd37a80bb64769414f5c411af8526fb121096254ca0ffae7cd1c50952
+                  chmod 0755 "$d/Vicinae-x86_64-v0.29.0.AppImage"
+              - name: vicinae-install-root
+                # root: /usr/local prefix, setcap on vicinae-input-server, modules-load.d for uinput
+                sudo: true
+                args: ["${vicinaeCache}"]
+                timeout: 10m
+                content: |
+                  set -euo pipefail
+                  export TERM=dumb # install.sh runs cols=$(tput cols) under set -e and aborts without TERM
+                  /usr/bin/bash "$1/install-v0.29.0.sh" --appimage "$1/Vicinae-x86_64-v0.29.0.AppImage"
+                  /usr/local/bin/vicinae version
+              - name: vicinae-cache-clean
+                args: ["${vicinaeCache}"]
+                timeout: 2m
+                content: |
+                  set -euo pipefail
+                  # The installer extracted the AppImage; the 100 MB download is no longer needed.
+                  find "$1" -maxdepth 1 -name 'Vicinae-x86_64-v0.29.0.AppImage' -delete
+                  # Upgrade path: restart a server that is already running so it uses the new binary.
+                  systemctl --user try-restart vicinae.service || true
+
+    - name: vicinae-service
+      description: "Enable and start the systemd user unit shipped by the installer"
+      dependsOn: [vicinae-install]
+      steps:
+        - name: vicinae-user-service
+          kind: shell-scripts
+          spec:
+            shell: bash
+            probeCommand: "systemctl --user is-enabled vicinae.service >/dev/null 2>&1 && systemctl --user is-active vicinae.service >/dev/null 2>&1 && /usr/local/bin/vicinae ping >/dev/null 2>&1"
+            scripts:
+              - name: vicinae-enable-now
+                timeout: 2m
+                content: |
+                  set -euo pipefail
+                  # The installer's own daemon-reload ran as root, so reload the user manager here.
+                  systemctl --user daemon-reload
+                  systemctl --user enable --now vicinae.service
+                  for _ in $(seq 1 30); do
+                    if /usr/local/bin/vicinae ping >/dev/null 2>&1; then
+                      echo "vicinae server is up"
+                      exit 0
+                    fi
+                    sleep 1
+                  done
+                  echo "vicinae server did not answer ping within 30 s; see: journalctl --user -u vicinae" >&2
+                  exit 1
+
+    - name: vicinae-gnome-extension
+      description: "vicinae@dagimg-dot v1.7.2: filesystem install (no Shell dialog), enabled via gsettings; active after re-login"
+      dependsOn: [host-check]
+      steps:
+        - name: vicinae-extension
+          kind: shell-scripts
+          spec:
+            shell: bash
+            # Files + gsettings only: `gnome-extensions info` does not see the extension before the re-login.
+            probeCommand: "m=$HOME/.local/share/gnome-shell/extensions/vicinae@dagimg-dot; grep -q '\"version-name\": \"1.7.2\"' $m/metadata.json 2>/dev/null && test -f $m/schemas/gschemas.compiled && gsettings get org.gnome.shell enabled-extensions | grep -q \"'vicinae@dagimg-dot'\" && ! gsettings get org.gnome.shell disabled-extensions | grep -q \"'vicinae@dagimg-dot'\""
+            scripts:
+              - name: vicinae-extension-install
+                timeout: 5m
+                content: |
+                  set -euo pipefail
+                  uuid=vicinae@dagimg-dot
+                  url=https://github.com/vicinaehq/gnome-extension/releases/download/v1.7.2/vicinae%40dagimg-dot.shell-extension-v1.7.2.zip
+                  sha=d0d79c762c7cac44941d4f74617b156c3a27df255320b8c81a20a3fe1f17284a
+                  tmp="$(mktemp -d)"
+                  trap 'find "$tmp" -delete' EXIT
+                  curl --proto '=https' --tlsv1.2 -fsSL --retry 3 -o "$tmp/ext.zip" "$url"
+                  echo "$sha  $tmp/ext.zip" | sha256sum -c --quiet -
+                  dest="$HOME/.local/share/gnome-shell/extensions/$uuid"
+                  # Replace any older copy wholesale (moved into $tmp, which the trap deletes).
+                  if [ -e "$dest" ]; then mv "$dest" "$tmp/previous"; fi
+                  mkdir -p "$dest"
+                  unzip -q -o "$tmp/ext.zip" -d "$dest"
+                  # The release zip ships only the schema XML.
+                  glib-compile-schemas "$dest/schemas"
+                  # Enable for the next login: add to enabled-extensions, drop from disabled-extensions (set-like).
+                  python3 - "$uuid" <<'PY'
+                  import ast, subprocess, sys
+                  uuid = sys.argv[1]
+                  def get(key):
+                      v = subprocess.check_output(["gsettings", "get", "org.gnome.shell", key], text=True).strip()
+                      return ast.literal_eval(v[4:] if v.startswith("@as ") else v)
+                  enabled, disabled = get("enabled-extensions"), get("disabled-extensions")
+                  if uuid not in enabled:
+                      subprocess.check_call(["gsettings", "set", "org.gnome.shell", "enabled-extensions", str(enabled + [uuid])])
+                  if uuid in disabled:
+                      subprocess.check_call(["gsettings", "set", "org.gnome.shell", "disabled-extensions", str([u for u in disabled if u != uuid])])
+                  PY
+                  # Already known to the running shell (a re-run after the re-login)? Then enable it live as well.
+                  gnome-extensions enable "$uuid" 2>/dev/null || echo "note: $uuid becomes active after you log out and back in"
+
+    - name: vicinae-keybinding
+      description: "Super+D -> vicinae toggle; Zorin's show-desktop keeps Ctrl+Super+D and Ctrl+Alt+D"
+      dependsOn: [vicinae-install]
+      steps:
+        - name: vicinae-super-d
+          kind: shell-scripts
+          spec:
+            shell: bash
+            probeCommand: "k=org.gnome.settings-daemon.plugins.media-keys.custom-keybinding:/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/vicinae/; gsettings get org.gnome.settings-daemon.plugins.media-keys custom-keybindings | grep -qF /custom-keybindings/vicinae/ && test \"$(gsettings get $k binding)\" = \"'<Super>d'\" && test \"$(gsettings get $k command)\" = \"'/usr/local/bin/vicinae toggle'\" && ! gsettings get org.gnome.desktop.wm.keybindings show-desktop | grep -qiF \"'<Super>d'\""
+            scripts:
+              - name: vicinae-super-d
+                timeout: 2m
+                content: |
+                  set -euo pipefail
+                  mk=org.gnome.settings-daemon.plugins.media-keys
+                  path=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/vicinae/
+                  # 1. Free <Super>d. Zorin's schema override sets show-desktop to
+                  #    ['<Primary><Super>d', '<Primary><Alt>d', '<Super>d']; mutter's own binding would win.
+                  python3 - <<'PY'
+                  import ast, subprocess
+                  schema, key = "org.gnome.desktop.wm.keybindings", "show-desktop"
+                  v = subprocess.check_output(["gsettings", "get", schema, key], text=True).strip()
+                  cur = ast.literal_eval(v[4:] if v.startswith("@as ") else v)
+                  new = [b for b in cur if b.lower() != "<super>d"]
+                  if new != cur:
+                      subprocess.check_call(["gsettings", "set", schema, key, str(new)])
+                  PY
+                  # 2. Register the custom keybinding path, keeping any existing custom shortcuts.
+                  python3 - "$mk" "$path" <<'PY'
+                  import ast, subprocess, sys
+                  schema, path = sys.argv[1], sys.argv[2]
+                  v = subprocess.check_output(["gsettings", "get", schema, "custom-keybindings"], text=True).strip()
+                  cur = ast.literal_eval(v[4:] if v.startswith("@as ") else v)
+                  if path not in cur:
+                      subprocess.check_call(["gsettings", "set", schema, "custom-keybindings", str(cur + [path])])
+                  PY
+                  # 3. The shortcut itself (absolute path: independent of the session PATH).
+                  s="$mk.custom-keybinding:$path"
+                  gsettings set "$s" name 'Vicinae'
+                  gsettings set "$s" command '/usr/local/bin/vicinae toggle'
+                  gsettings set "$s" binding '<Super>d'

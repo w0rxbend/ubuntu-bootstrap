@@ -2,7 +2,8 @@
 #
 # GNOME / Zorin desktop settings carried over from the old bootstrap (POSIX rewrite of the
 # zsh-only gsettings block):
-#   - Zorin Taskbar "hot-keys" off (it grabs Super+1..9 for launching pinned apps)
+#   - Zorin Dash / Zorin Taskbar "hot-keys" off: both grab Super+1..9 and Shift+Super+1..9 for launching
+#     pinned apps (zorin-dash@zorinos.com is the one enabled on Zorin OS 18 Pro, with hot-keys=true)
 #   - 9 fixed (non-dynamic) workspaces
 #   - Super+N switches to workspace N, Super+Shift+N moves the window to workspace N
 #     (GNOME's switch-to-application-N bindings are cleared so they do not clash)
@@ -53,10 +54,13 @@ spec:
               - name: gnome-workspaces-keybindings
                 content: |
                   set -euo pipefail
-                  # Zorin Taskbar grabs Super+1..9 for pinned apps; free them for workspaces.
-                  if gsettings list-keys org.gnome.shell.extensions.zorin-taskbar >/dev/null 2>&1; then
-                    gsettings set org.gnome.shell.extensions.zorin-taskbar hot-keys false
-                  fi
+                  # Zorin Dash (enabled on Zorin OS 18) and Zorin Taskbar grab Super+1..9 and Shift+Super+1..9
+                  # for pinned apps ("hot-keys"); free them for workspaces. Missing schemas are skipped.
+                  for schema in org.gnome.shell.extensions.zorin-dash org.gnome.shell.extensions.zorin-taskbar; do
+                    if gsettings list-keys "$schema" 2>/dev/null | grep -qx hot-keys; then
+                      gsettings set "$schema" hot-keys false
+                    fi
+                  done
                   gsettings set org.gnome.mutter dynamic-workspaces false
                   gsettings set org.gnome.desktop.wm.preferences num-workspaces 9
                   for i in 1 2 3 4 5 6 7 8 9; do
@@ -66,7 +70,8 @@ spec:
                   done
                   gsettings set org.gnome.shell.keybindings show-screenshot-ui "['<Super>Print', 'Print']"
                 timeout: 2m
-            probeCommand: "test \"$(gsettings get org.gnome.desktop.wm.preferences num-workspaces)\" = 9 && gsettings get org.gnome.desktop.wm.keybindings switch-to-workspace-9 | grep -q Super"
+            # Also fails while Zorin Dash/Taskbar still grab Super+N, or GNOME's switch-to-application-N does.
+            probeCommand: "test \"$(gsettings get org.gnome.desktop.wm.preferences num-workspaces)\" = 9 && gsettings get org.gnome.mutter dynamic-workspaces | grep -qx false && gsettings get org.gnome.desktop.wm.keybindings switch-to-workspace-9 | grep -qF \"'<Super>9'\" && gsettings get org.gnome.desktop.wm.keybindings move-to-workspace-9 | grep -qF \"'<Super><Shift>9'\" && gsettings get org.gnome.shell.keybindings switch-to-application-1 | grep -qF '[]' && ! gsettings get org.gnome.shell.extensions.zorin-dash hot-keys 2>/dev/null | grep -qx true && ! gsettings get org.gnome.shell.extensions.zorin-taskbar hot-keys 2>/dev/null | grep -qx true"
         - name: gnome-favorite-apps
           kind: commands
           description: "Pinned apps, as set by hand on this host"

@@ -9,8 +9,12 @@
 #                over the session D-Bus. It does not work over SSH or from a TTY.
 #              - pipx must be installed (00-base) and on fluxion's PATH; fluxion must be started with
 #                ~/.local/bin on PATH (bootstrap.sh exports it) so a freshly installed gext is found.
-#              - gext installs and enables each extension; a newly installed extension may need a
-#                log out/in (Wayland) before gnome-shell shows it as ACTIVE.
+#              - `gext -F install` uses the filesystem backend: it unpacks the extensions.gnome.org build for
+#                this shell into ~/.local/share/gnome-shell/extensions/<uuid>, compiles its schemas and adds it to
+#                org.gnome.shell enabled-extensions. Plain `gext install` would use the D-Bus backend, which
+#                makes GNOME Shell show a confirmation dialog and blocks the unattended run until clicked.
+#              - GNOME Shell (Wayland) only loads the new extensions after log out/in, and until then
+#                `gnome-extensions info` does not know them, so the probes check the files and gsettings.
 apiVersion: initkit.io/v1alpha1
 kind: WorkstationProfile
 metadata:
@@ -52,54 +56,60 @@ spec:
         - name: gext-user-theme
           kind: commands
           spec:
-            probeCommand: "gnome-extensions info user-theme@gnome-shell-extensions.gcampax.github.com >/dev/null 2>&1"
+            probeCommand: "{ test -f $HOME/.local/share/gnome-shell/extensions/user-theme@gnome-shell-extensions.gcampax.github.com/metadata.json || test -f /usr/share/gnome-shell/extensions/user-theme@gnome-shell-extensions.gcampax.github.com/metadata.json; } && gsettings get org.gnome.shell enabled-extensions | grep -qF \"'user-theme@gnome-shell-extensions.gcampax.github.com'\""
             commands:
               - name: user-theme
-                run: '"$HOME/.local/bin/gext" install user-theme@gnome-shell-extensions.gcampax.github.com'
-                unless: "gnome-extensions info user-theme@gnome-shell-extensions.gcampax.github.com >/dev/null 2>&1"
+                # -F = filesystem backend: unpack + enable via gsettings, no GNOME Shell confirmation dialog
+                run: '"$HOME/.local/bin/gext" -F install user-theme@gnome-shell-extensions.gcampax.github.com'
+                unless: "{ test -f $HOME/.local/share/gnome-shell/extensions/user-theme@gnome-shell-extensions.gcampax.github.com/metadata.json || test -f /usr/share/gnome-shell/extensions/user-theme@gnome-shell-extensions.gcampax.github.com/metadata.json; } && gsettings get org.gnome.shell enabled-extensions | grep -qF \"'user-theme@gnome-shell-extensions.gcampax.github.com'\""
                 timeout: 5m
         - name: gext-battery-indicator-icon
           kind: commands
           spec:
-            probeCommand: "gnome-extensions info battery-indicator-icon@Deminder >/dev/null 2>&1"
+            probeCommand: "{ test -f $HOME/.local/share/gnome-shell/extensions/battery-indicator-icon@Deminder/metadata.json || test -f /usr/share/gnome-shell/extensions/battery-indicator-icon@Deminder/metadata.json; } && gsettings get org.gnome.shell enabled-extensions | grep -qF \"'battery-indicator-icon@Deminder'\""
             commands:
               - name: battery-indicator-icon
-                run: '"$HOME/.local/bin/gext" install battery-indicator-icon@Deminder'
-                unless: "gnome-extensions info battery-indicator-icon@Deminder >/dev/null 2>&1"
+                # -F = filesystem backend: unpack + enable via gsettings, no GNOME Shell confirmation dialog
+                run: '"$HOME/.local/bin/gext" -F install battery-indicator-icon@Deminder'
+                unless: "{ test -f $HOME/.local/share/gnome-shell/extensions/battery-indicator-icon@Deminder/metadata.json || test -f /usr/share/gnome-shell/extensions/battery-indicator-icon@Deminder/metadata.json; } && gsettings get org.gnome.shell enabled-extensions | grep -qF \"'battery-indicator-icon@Deminder'\""
                 timeout: 5m
         - name: gext-notification-icons
           kind: commands
           spec:
-            probeCommand: "gnome-extensions info notification-icons@muhammad_ans.github >/dev/null 2>&1"
+            probeCommand: "{ test -f $HOME/.local/share/gnome-shell/extensions/notification-icons@muhammad_ans.github/metadata.json || test -f /usr/share/gnome-shell/extensions/notification-icons@muhammad_ans.github/metadata.json; } && gsettings get org.gnome.shell enabled-extensions | grep -qF \"'notification-icons@muhammad_ans.github'\""
             commands:
               - name: notification-icons
-                run: '"$HOME/.local/bin/gext" install notification-icons@muhammad_ans.github'
-                unless: "gnome-extensions info notification-icons@muhammad_ans.github >/dev/null 2>&1"
+                # -F = filesystem backend: unpack + enable via gsettings, no GNOME Shell confirmation dialog
+                run: '"$HOME/.local/bin/gext" -F install notification-icons@muhammad_ans.github'
+                unless: "{ test -f $HOME/.local/share/gnome-shell/extensions/notification-icons@muhammad_ans.github/metadata.json || test -f /usr/share/gnome-shell/extensions/notification-icons@muhammad_ans.github/metadata.json; } && gsettings get org.gnome.shell enabled-extensions | grep -qF \"'notification-icons@muhammad_ans.github'\""
                 timeout: 5m
         - name: gext-tophat
           kind: commands
           spec:
-            probeCommand: "gnome-extensions info tophat@fflewddur.github.io >/dev/null 2>&1"
+            probeCommand: "{ test -f $HOME/.local/share/gnome-shell/extensions/tophat@fflewddur.github.io/metadata.json || test -f /usr/share/gnome-shell/extensions/tophat@fflewddur.github.io/metadata.json; } && gsettings get org.gnome.shell enabled-extensions | grep -qF \"'tophat@fflewddur.github.io'\""
             commands:
               - name: tophat
-                run: '"$HOME/.local/bin/gext" install tophat@fflewddur.github.io'
-                unless: "gnome-extensions info tophat@fflewddur.github.io >/dev/null 2>&1"
+                # -F = filesystem backend: unpack + enable via gsettings, no GNOME Shell confirmation dialog
+                run: '"$HOME/.local/bin/gext" -F install tophat@fflewddur.github.io'
+                unless: "{ test -f $HOME/.local/share/gnome-shell/extensions/tophat@fflewddur.github.io/metadata.json || test -f /usr/share/gnome-shell/extensions/tophat@fflewddur.github.io/metadata.json; } && gsettings get org.gnome.shell enabled-extensions | grep -qF \"'tophat@fflewddur.github.io'\""
                 timeout: 5m
         - name: gext-space-bar
           kind: commands
           spec:
-            probeCommand: "gnome-extensions info space-bar@luchrioh >/dev/null 2>&1"
+            probeCommand: "{ test -f $HOME/.local/share/gnome-shell/extensions/space-bar@luchrioh/metadata.json || test -f /usr/share/gnome-shell/extensions/space-bar@luchrioh/metadata.json; } && gsettings get org.gnome.shell enabled-extensions | grep -qF \"'space-bar@luchrioh'\""
             commands:
               - name: space-bar
-                run: '"$HOME/.local/bin/gext" install space-bar@luchrioh'
-                unless: "gnome-extensions info space-bar@luchrioh >/dev/null 2>&1"
+                # -F = filesystem backend: unpack + enable via gsettings, no GNOME Shell confirmation dialog
+                run: '"$HOME/.local/bin/gext" -F install space-bar@luchrioh'
+                unless: "{ test -f $HOME/.local/share/gnome-shell/extensions/space-bar@luchrioh/metadata.json || test -f /usr/share/gnome-shell/extensions/space-bar@luchrioh/metadata.json; } && gsettings get org.gnome.shell enabled-extensions | grep -qF \"'space-bar@luchrioh'\""
                 timeout: 5m
         - name: gext-alphabetical-app-grid
           kind: commands
           spec:
-            probeCommand: "gnome-extensions info AlphabeticalAppGrid@stuarthayhurst >/dev/null 2>&1"
+            probeCommand: "{ test -f $HOME/.local/share/gnome-shell/extensions/AlphabeticalAppGrid@stuarthayhurst/metadata.json || test -f /usr/share/gnome-shell/extensions/AlphabeticalAppGrid@stuarthayhurst/metadata.json; } && gsettings get org.gnome.shell enabled-extensions | grep -qF \"'AlphabeticalAppGrid@stuarthayhurst'\""
             commands:
               - name: alphabetical-app-grid
-                run: '"$HOME/.local/bin/gext" install AlphabeticalAppGrid@stuarthayhurst'
-                unless: "gnome-extensions info AlphabeticalAppGrid@stuarthayhurst >/dev/null 2>&1"
+                # -F = filesystem backend: unpack + enable via gsettings, no GNOME Shell confirmation dialog
+                run: '"$HOME/.local/bin/gext" -F install AlphabeticalAppGrid@stuarthayhurst'
+                unless: "{ test -f $HOME/.local/share/gnome-shell/extensions/AlphabeticalAppGrid@stuarthayhurst/metadata.json || test -f /usr/share/gnome-shell/extensions/AlphabeticalAppGrid@stuarthayhurst/metadata.json; } && gsettings get org.gnome.shell enabled-extensions | grep -qF \"'AlphabeticalAppGrid@stuarthayhurst'\""
                 timeout: 5m

@@ -26,11 +26,13 @@
 #     chatgpt.sources), so it is installed from the vendor .deb; later updates come via apt.
 #   - fastfetch is not in the noble archive; the upstream .deb is installed (update it by
 #     re-running with --re-probe after removing it, or via the upstream release page).
-#   - Crystal: installed by hand on this host with `sudo apt install crystal` (1.11.2 from noble
-#     universe) after `crystal-lang.org/install.sh | sudo zsh` wrote a broken source (00-base
-#     removes it). This phase adds the repo the installer meant to add; sourceList replaces the
-#     same crystal.list path. An already-installed archive crystal is only upgraded by the next
-#     `apt full-upgrade` (or `update`). The OBS signing key expires 2027-09-22; when OBS renews
+#   - Crystal: `crystal-lang.org/install.sh | sudo zsh` wrote a broken source on this host (00-base
+#     moves it aside). This phase adds the repo the installer meant to add (sourceList replaces the
+#     same crystal.list path) and installs the `crystal` meta package (crystal1.21 at the time of
+#     writing, which also ships /usr/bin/shards; never add Ubuntu's own `shards` package, it
+#     clashes). An older crystal from noble universe (1.11.2) counts as installed for the dpkg
+#     probe, so apps-crystal-upgrade moves it to the repo build when it is older than 1.21
+#     (fluxion needs >= 1.21 to build). The OBS signing key expires 2027-09-22; when OBS renews
 #     it, update the sha256 below.
 #   - Brave is a Zorin default and is intentionally not managed here.
 apiVersion: initkit.io/v1alpha1
@@ -203,3 +205,13 @@ spec:
           kind: apt-packages
           spec:
             packages: [crystal]
+        - name: apps-crystal-upgrade
+          kind: commands
+          description: "Upgrade a pre-existing archive crystal (< 1.21) to the repo build"
+          spec:
+            commands:
+              - name: crystal-upgrade
+                sudo: true
+                timeout: 15m
+                run: "apt-get install -y --only-upgrade crystal"
+            probeCommand: 'v="$(crystal --version 2>/dev/null | sed -n ''s/^Crystal \([0-9][0-9.]*\).*/\1/p'')"; test -n "$v" && dpkg --compare-versions "$v" ge 1.21'

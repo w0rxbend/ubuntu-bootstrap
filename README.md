@@ -8,14 +8,17 @@ It ports the Arch and Fedora scripts from
 reproduces everything I installed by hand on the current Zorin install, as found in the bash and zsh history, the
 apt log, and the snap and flatpak lists. The same tools stay in charge of their own jobs:
 
-- **dotbot** (dotbot-go) links the dotfiles.
+- **dotbot** (dotbot-go) links the dotfiles, straight from a live clone of the original repo in
+  `~/.system-bootstrap` (nothing is copied into this repo).
 - **nerd-fonts-installer** installs the Nerd Fonts.
 - **cargo-binstall** installs the Rust CLI tools.
 - **binstaller** installs the pinned release binaries in `~/.apps`.
 - **SDKMAN**, **nvm**, **pyenv** and the other language installers work as before.
 
-The desktop is Zorin's own GNOME. Nothing from the tiling or Arch desktop setup is included (niri, DMS, sway,
-PaperWM, waybar and so on), and **Docker CE replaces podman**.
+The desktop is Zorin's own GNOME, with Fedora-style `Super+1..9` workspaces and the **Vicinae** launcher on
+`Super+D`. Nothing from the tiling or Arch desktop setup is included (niri, DMS, sway, PaperWM, waybar and so on),
+and **Docker CE replaces podman**. Agent skills live in one git-tracked folder that every coding agent links to.
+A test harness runs the same orchestration on generated, non-halting copies of the profiles.
 
 ---
 
@@ -28,6 +31,9 @@ PaperWM, waybar and so on), and **Docker CE replaces podman**.
 - [Full inventory](#full-inventory)
 - [Docker instead of podman](#docker-instead-of-podman)
 - [Dotfiles with dotbot](#dotfiles-with-dotbot)
+- [Agent skills](#agent-skills)
+- [Vicinae launcher](#vicinae-launcher)
+- [Testing](#testing)
 - [Adding or changing items](#adding-or-changing-items)
 - [Re-running and idempotency](#re-running-and-idempotency)
 - [fluxion 0.3.1 caveats handled here](#fluxion-031-caveats-handled-here)
@@ -69,6 +75,10 @@ fluxion doctor -c profiles/00-base.yaml
 ./bootstrap.sh
 ```
 
+The `dotfiles` module clones [w0rxbend/system-bootstrap](https://github.com/w0rxbend/system-bootstrap) to
+`~/.system-bootstrap` over https (no SSH key needed) and links the shared dotfiles from there; anything it replaces in
+`$HOME` is backed up to `~/.zorin-bootstrap-backup/` first.
+
 The run is unattended: `bootstrap.sh` passes `--no-tui`, so fluxion prints plain output instead of opening its
 full-screen selector for each module. Add `--tui` to get the selector (press `enter` to start and `q` to close the
 screen after the run). Pressing `q` **at the selector** skips that module, and fluxion still exits 0, so the
@@ -91,7 +101,8 @@ fluxion graph -c profiles/10-apps.yaml        # phase dependency graph (mermaid)
 ```
 
 The last module (`session`) changes your groups (`docker`, `libvirt`, `kvm`) and your login shell. It then stops with
-a **log-out checkpoint** (fluxion exit code 75). Log out and back in, or reboot, then run:
+a **log-out checkpoint** (fluxion exit code 75). The re-login also loads the Vicinae GNOME Shell extension. Log out
+and back in, or reboot, then run:
 
 ```bash
 cd ~/.zorin-bootstrap && ./bootstrap.sh --only post-checks
@@ -107,6 +118,7 @@ one** and prints a summary at the end. Fix whatever failed and re-run just that 
 ```
 ./bootstrap.sh [--dry-run | --validate | --plan | --status | --failed | --list]
                [--only a,b | --from NAME] [--yes] [--tui] [--show-output] [--re-probe]
+               [--test | --profiles-dir DIR] [--state-prefix P] [--report FILE]
 ```
 
 | Flag | Effect |
@@ -122,13 +134,21 @@ one** and prints a summary at the end. Fix whatever failed and re-run just that 
 | `--tui` | Opens fluxion's interactive selector/TUI for each module instead of plain output (apply only) |
 | `--no-tui` | The default; accepted for compatibility |
 | `--yes`, `--show-output`, `--re-probe` | Passed through to fluxion |
+| `--test` | Runs the generated test profiles (`tests/generated/`, regenerated first) with state names `test-NAME`. Same orchestration, same modules; see [Testing](#testing) |
+| `--profiles-dir DIR` | Reads each module's profile from `DIR` instead of `profiles/` (same relative layout) |
+| `--state-prefix P` | Prefixes the fluxion state names (`--test` uses `test-`) |
+| `--report FILE` | Appends one tab-separated line per module: name, rc, result, seconds and fluxion's `Summary:` counts (ok, failed, skipped, would run) |
+
+`FLUXION_BIN=/path/to/fluxion ./bootstrap.sh ...` uses that fluxion instead of the one on PATH (for example a patched
+build); the profiles' own scripts get the same binary through the exported variable.
 
 Before any module runs, the script does these checks and setup steps:
 
 - It refuses to run as root.
 - It warns if the repo is not at `~/.zorin-bootstrap`, if you are connected over SSH, or if the host is not
   noble-based.
-- It installs fluxion when it is missing and warns if the version is not 0.3.1.
+- It uses `$FLUXION_BIN` when set, otherwise installs fluxion when it is missing, and warns if the version is not
+  0.3.1.
 - It exports a PATH that includes every tool location the modules create: `~/.cargo/bin`, `~/.local/bin`,
   `~/.go/bin`, `~/.apps/{dotbot,neovim,yq,helm,kustomize}/bin`, `~/.local/share/pnpm/bin` and juliaup.
 - It runs `sudo -v` once and then refreshes the ticket with `sudo -n -v` every 50 s until the script exits.
@@ -150,7 +170,11 @@ The script never sees your password. `sudo` prompts for it directly, and fluxion
 | `just dry NAME` / `just plan NAME` | Dry-run or plan for one module |
 | `just status [a,b]` / `just failed [a,b]` | Live probe summary, or only the missing and failed items |
 | `just state NAME` / `just state-reset NAME` | Shows or deletes the fluxion state recorded for a module |
-| `just dotfiles` / `just dotfiles-dry` | Runs dotbot directly: re-links everything, or previews without changing anything |
+| `just dotfiles` / `just dotfiles-dry` / `just dotfiles-check` | `scripts/dotfiles-link.sh`: back up + re-link everything, preview, or verify every link |
+| `just dotfiles-pull` | `scripts/system-bootstrap-sync.sh`: clone `~/.system-bootstrap` or fast-forward it |
+| `just skills` | `scripts/link-skills.sh`: link every installed agent to the shared skills folder |
+| `just test [ARGS]` / `just test-validate` / `just test-assert` / `just test-gen` | `tests/run-tests.sh` (all stages / read-only validate + dry-run / assertions only), regenerate `tests/generated/` |
+| `just vicinae` | `./bootstrap.sh --only vicinae` |
 | `just update` | `~/system-update.sh` (apt, snap, flatpak, rustup, SDKMAN, nvm, ...) |
 | `just refresh-binaries` / `just refresh-fonts` | Re-runs the binstaller phase / the four Nerd Font phases without `--skip-already-installed` (see [Updating](#updating)) |
 | `just obs` / `pro-parity` / `gnome-extensions` / `wallpapers` / `post-checks` | The optional modules |
@@ -171,11 +195,11 @@ Splitting the setup this way has these consequences:
 - A failure in one module does not block the others. Inside a module, the lists most likely to fail (flatpaks, snaps,
   curl installers) sit in **leaf phases** that no other phase depends on.
 - The only `prompt-logout` phase is in the last module, `session`, so dry-runs of the other modules are never cut
-  short.
+  short. The generated test profiles drop it entirely.
 - `dotfiles` runs late on purpose. Several installers (SDKMAN, juliaup, pnpm, codex, kimi) append lines to
-  `~/.zshrc`. Running dotbot after them means those lines land in the throwaway oh-my-zsh template, and dotbot then
-  replaces that template with the symlink to `dotfiles/.zshrc`. If dotbot ran first, the installers would edit the
-  repo's copy.
+  `~/.zshrc`. Running dotbot after them means those lines land in the throwaway oh-my-zsh template (which is backed
+  up to `~/.zorin-bootstrap-backup/.zshrc`), and dotbot then replaces it with the link to
+  `~/.system-bootstrap/.files/.zshrc`. If dotbot ran first, the installers would edit the shared file.
 
 Every profile begins with a `host-check` assert that the host is noble-based with `apt-get`. Profiles never use
 `when: {distribution: ubuntu}`, because fluxion does not map `ID=zorin` to ubuntu.
@@ -188,10 +212,13 @@ Every profile begins with a `host-check` assert that the host is noble-based wit
 ~/.zorin-bootstrap/
 ├── README.md
 ├── Justfile                      # shortcuts (just is installed by `toolchains`)
-├── bootstrap.sh                  # ordered runner: preflight, sudo keep-alive, summary
-├── .gitignore  .editorconfig
+├── bootstrap.sh                  # ordered runner: preflight, sudo keep-alive, summary (--test for the tests)
+├── .gitignore  .editorconfig  .shellcheckrc
 ├── scripts/
-│   └── validate-all.sh           # validate --strict + lint on every profile, bash -n on scripts
+│   ├── validate-all.sh           # validate --strict + lint (prod + test profiles), bash -n + shellcheck
+│   ├── system-bootstrap-sync.sh  # clone ~/.system-bootstrap (https) or fast-forward it; --check
+│   ├── dotfiles-link.sh          # back up what is in the way, run dotbot for both configs; --check/--dry-run
+│   └── link-skills.sh            # POSIX sh: <agent>/skills -> ~/.agents/skills for installed agents
 ├── profiles/
 │   ├── 00-base.yaml              # base
 │   ├── 10-apps.yaml              # apps
@@ -201,6 +228,7 @@ Every profile begins with a `host-check` assert that the host is noble-based wit
 │   ├── 50-shell.yaml             # shell
 │   ├── 60-desktop-apps.yaml      # desktop-apps
 │   ├── 70-gnome.yaml             # gnome
+│   ├── 75-vicinae.yaml           # vicinae
 │   ├── 80-dotfiles.yaml          # dotfiles
 │   ├── 90-session.yaml           # session (log-out checkpoint)
 │   └── optional/
@@ -214,13 +242,24 @@ Every profile begins with a `host-check` assert that the host is noble-based wit
 │   └── nerd-fonts/
 │       ├── all.yaml              # all 42 families (linked to ~/.config/nerd-fonts-installer/config.yaml)
 │       ├── 01-core.yaml  02-more.yaml  03-rest.yaml  04-noto.yaml   # batches fluxion uses
-└── dotfiles/                     # dotbot-go base directory
-    ├── install.conf.yaml
-    ├── zorin-system-update.sh    # linked to ~/system-update.sh
-    ├── .zshrc .tmux.conf .ideavimrc .wezterm.lua .hidden
-    ├── starship.toml alacritty.toml alacritty_theme.toml kitty.conf zathurarc
-    ├── nvim/                     # AstroNvim config
-    └── .config/{btop,ghostty,zellij,lazygit,lsd,yazi,bottom,vesktop,environment.d,xdg-terminals.list}
+├── dotfiles/                     # ONLY Zorin-specific files; shared dotfiles come from ~/.system-bootstrap
+│   ├── system-bootstrap.conf.yaml  # dotbot config, base dir ~/.system-bootstrap/.files (the live clone)
+│   ├── install.conf.yaml         # dotbot config, base dir dotfiles/ (the Zorin-only files below)
+│   ├── custom.zsh                # -> ~/.custom.zsh, sourced by the shared .zshrc (Zorin PATH + ubuntu plugin)
+│   ├── zorin-system-update.sh    # -> ~/system-update.sh
+│   ├── .config/xdg-terminals.list  .config/environment.d/90-session.conf   # kitty as terminal, session env
+│   └── agents/skills/            # the shared agent skills (README.md explains the layout)
+└── tests/
+    ├── gen-test-profiles.sh      # profiles/ -> tests/generated/ (halting steps removed)
+    ├── run-tests.sh              # validate, apply, idempotency re-apply, assertions; --container
+    ├── generated/                # git-ignored, regenerated before every use
+    ├── assertions/               # lib.sh + one <module>.sh per module (the real post-conditions)
+    ├── container/Dockerfile      # ubuntu:24.04 image for --container
+    ├── lib/                      # generator, profile queries, inline-snippet extractor (python3 + PyYAML)
+    └── logs/                     # git-ignored run logs
+
+~/.system-bootstrap/              # live clone of github.com/w0rxbend/system-bootstrap (source of truth)
+└── .files/                       # .zshrc, nvim, kitty.conf, .tmux.conf, starship, alacritty, .config/...
 ```
 
 Relative paths inside a profile resolve from the profile file's own directory. That is why `profiles/*.yaml` refer
@@ -241,9 +280,10 @@ Default sequence (`./bootstrap.sh`):
 | 5 | `binaries` | `profiles/40-binaries.yaml` | binstaller profile (13 tools in `~/.apps`), `nvim`/`vim` links in `/usr/local/bin`, Nerd Fonts in 4 batches |
 | 6 | `shell` | `profiles/50-shell.yaml` | oh-my-zsh (pinned) and 3 plugins, TPM, starship, kitty (upstream build, desktop integration, `x-terminal-emulator` alternative), ghostty snap |
 | 7 | `desktop-apps` | `profiles/60-desktop-apps.yaml` | Flathub remote, 55 flatpaks in category groups, theia-ide and telegram snaps, Claude Code, Codex and Kimi CLIs, Zed, Paseo |
-| 8 | `gnome` | `profiles/70-gnome.yaml` | 9 fixed workspaces, `Super+N` / `Super+Shift+N` bindings, screenshot keys, Zorin Taskbar hot-keys turned off, pinned favourites |
-| 9 | `dotfiles` | `profiles/80-dotfiles.yaml` | Links the dotfiles with dotbot-go, installs the tmux plugins through TPM, sets up the broot launcher |
-| 10 | `session` | `profiles/90-session.yaml` | zsh as login shell, `docker`/`libvirt`/`kvm` groups, **log-out checkpoint** |
+| 8 | `gnome` | `profiles/70-gnome.yaml` | 9 fixed workspaces, `Super+N` / `Super+Shift+N` bindings, screenshot keys, Zorin Dash / Zorin Taskbar hot-keys turned off, pinned favourites |
+| 9 | `vicinae` | `profiles/75-vicinae.yaml` | Vicinae launcher (pinned AppImage via the official script into `/usr/local`), its systemd user service, the `vicinae@dagimg-dot` GNOME extension, `Super+D` toggle |
+| 10 | `dotfiles` | `profiles/80-dotfiles.yaml` | Clones/fast-forwards `~/.system-bootstrap`, backs up what is in the way, links both dotbot configs (shared dotfiles from the clone, Zorin-only files and agent skills from this repo), tmux plugins, broot launcher |
+| 11 | `session` | `profiles/90-session.yaml` | zsh as login shell, `docker`/`libvirt`/`kvm` groups, **log-out checkpoint** |
 
 Optional modules (`./bootstrap.sh --only NAME`):
 
@@ -251,9 +291,9 @@ Optional modules (`./bootstrap.sh --only NAME`):
 |---|---|
 | `obs` | OBS Studio and 10 flatpak plugins (DroidCam, background removal, VAAPI, PipeWire video, ...) |
 | `zorin-pro-parity` | The 35 flatpaks that Zorin OS **Pro** preinstalls, for a Zorin Core install or a reinstall without Pro |
-| `gnome-extensions` | `gext` (pipx) plus user-theme, battery-indicator-icon, notification-icons, tophat, space-bar, AlphabeticalAppGrid |
+| `gnome-extensions` | `gext` (pipx) plus user-theme, battery-indicator-icon, notification-icons, tophat, space-bar, AlphabeticalAppGrid, installed with `gext -F` (no GNOME Shell dialog) |
 | `wallpapers` | Sparse clone of the wallpapers from the old repo into `~/.local/share/backgrounds/system-bootstrap` (about 109 MB) |
-| `post-checks` | Run after logging back in. Checks the docker group, `docker run hello-world`, the zsh login shell, fonts, nvim and the core CLIs, then reminds you of the manual steps |
+| `post-checks` | Run after logging back in. Checks the docker group, `docker run hello-world`, the zsh login shell, fonts, nvim, the core CLIs and that the Vicinae extension is active, then reminds you of the manual steps |
 
 ---
 
@@ -265,9 +305,9 @@ The profile files have the exact spec for each item. This section is a quick sum
 
 | Group | Packages |
 |---|---|
-| core | ca-certificates curl wget gnupg git zsh unzip zip xz-utils fontconfig fuse3 libfuse2t64 software-properties-common debconf-utils apt-transport-https pciutils |
+| core | ca-certificates curl wget gnupg git zsh unzip zip xz-utils fontconfig fuse3 libfuse2t64 software-properties-common debconf-utils apt-transport-https pciutils python3-yaml (used by the dotfiles and test scripts) |
 | CLI | alacritty bat btop fzf htop tmux wl-clipboard jq net-tools hyperfine asciinema gdu xsensors lm-sensors stress zoxide tig wev foot mtr nmap httpie ripgrep pipx stacer tree mediainfo libimage-exiftool-perl imagemagick poppler-utils ffmpegthumbnailer 7zip python3-venv python3-pip python3-dev |
-| build | build-essential gcc g++ pkg-config clang clangd clang-format clang-tidy clang-tools llvm llvm-dev libclang-dev libclang-rt-dev lld lldb make cmake meson ninja-build ccache flex bison gperf, plus the -dev libraries that pyenv, Python and Rust builds need (readline, ffi, ssl, zlib, bz2, sqlite3, lzma, tk, ncurses, xml2, xmlsec1, secret) and dfu-util |
+| build | build-essential gcc g++ pkg-config clang clangd clang-format clang-tidy clang-tools llvm llvm-dev libclang-dev libclang-rt-dev lld lldb make cmake meson ninja-build ccache flex bison gperf, plus the -dev libraries that pyenv, Python, Rust and Crystal builds need (readline, ffi, ssl, zlib, bz2, sqlite3, lzma, tk, ncurses, xml2, xmlsec1, secret, yaml, gmp) and dfu-util |
 | debug | gdb valgrind strace ltrace linux-tools-common linux-tools-generic-hwe-24.04 tshark protobuf-compiler |
 | GUI dev | GTK 3/4 and GObject-introspection dev packages, WebKitGTK 6, X11/Xcursor/Xrandr/Xi/Xinerama dev, Mesa/GL/EGL/GBM dev, mesa-utils, mesa-vdpau-drivers |
 | media | vlc mpv imv ffmpeg, libav* dev packages, the GStreamer plugin sets (base/good/bad/ugly/libav/vaapi/pipewire), libopenh264-7, VA-API/VDPAU and vainfo, PipeWire and wireplumber, easyeffects, power-profiles-daemon, upower, **ubuntu-restricted-extras** (EULA preseeded), **v4l2loopback-dkms** and HWE headers |
@@ -294,7 +334,7 @@ not set `DEBIAN_FRONTEND`, so without the preseeds these packages could hang wai
 | `1password` | 1Password key (fingerprint-pinned) and a `1password.sources` file identical to the one the package writes |
 | `chatgpt` | The latest `.deb` from `persistent.oaistatic.com`. Its postinst adds the repo and keyring, since there is no public key URL |
 | `fastfetch` | The latest `.deb` from the fastfetch GitHub releases (it is not in the noble archive) |
-| `crystal` | openSUSE OBS `devel:languages:crystal` repo (`xUbuntu_24.04`, the one `crystal-lang.org/install.sh` sets up), keyring `/etc/apt/keyrings/crystal.gpg` (sha256-pinned; the key expires 2027-09-22). On this host it was installed by hand as `sudo apt install crystal` (1.11.2 from universe); the next `apt full-upgrade` moves it to the OBS build |
+| `crystal` | openSUSE OBS `devel:languages:crystal` repo (`xUbuntu_24.04`, the one `crystal-lang.org/install.sh` sets up), keyring `/etc/apt/keyrings/crystal.gpg` (sha256-pinned; the key expires 2027-09-22). The `crystal` meta package pulls `crystal1.21` (Crystal 1.21.1 with `/usr/bin/shards`; this host already runs it). `apps-crystal-upgrade` moves an older universe build (1.11.2) to the repo build, because the dpkg probe alone would count 1.11.2 as installed. Never add Ubuntu's `shards` package: it clashes with `/usr/bin/shards` from `crystal1.21` |
 
 Brave is not touched. It is Zorin 18's default browser and comes from Zorin's apt source.
 
@@ -384,18 +424,25 @@ Pro, so installing them does nothing there.
 ### `gnome`
 
 Turns off dynamic workspaces and sets 9 workspaces. `Super+1..9` switches workspace and `Super+Shift+1..9` moves the
-window there. The default `switch-to-application-N` bindings are cleared, and screenshot UI is on `Super+Print` and
-`Print`. Zorin Taskbar's `hot-keys` setting is turned off because it grabs `Super+1..9`. The module has to run inside
-the logged-in GNOME session and asserts that `DBUS_SESSION_BUS_ADDRESS` is set.
+window there, as on Fedora. The default `switch-to-application-N` bindings are cleared, and screenshot UI is on
+`Super+Print` and `Print`. The `hot-keys` setting of **Zorin Dash** (`zorin-dash@zorinos.com`, the enabled dock on
+Zorin OS 18 Pro, `hot-keys=true` by default) and of Zorin Taskbar is turned off, because both grab `Super+1..9` and
+`Shift+Super+1..9` to launch pinned apps; without that the workspace bindings never fire. The probe (and
+`tests/assertions/gnome.sh`) also scans every gsettings key for any other holder of those shortcuts. The module has to
+run inside the logged-in GNOME session and asserts that `DBUS_SESSION_BUS_ADDRESS` is set.
 
 It also sets the dash/taskbar favourites to what I pinned by hand: Brave, Files, Software, Terminal, Vesktop,
 ChatGPT, Claude and Paseo (`org.gnome.shell favorite-apps`). `gnome` runs after `apps` and `desktop-apps`, so those
 `.desktop` IDs exist by then.
 
+### `vicinae`
+
+See [Vicinae launcher](#vicinae-launcher).
+
 ### `dotfiles` and `session`
 
-See [Dotfiles with dotbot](#dotfiles-with-dotbot). `session` sets `/usr/bin/zsh` as your login shell and adds you
-to `docker`, `libvirt` and `kvm`. It then asks you to log out.
+See [Dotfiles with dotbot](#dotfiles-with-dotbot) and [Agent skills](#agent-skills). `session` sets `/usr/bin/zsh`
+as your login shell and adds you to `docker`, `libvirt` and `kvm`. It then asks you to log out.
 
 ---
 
@@ -432,61 +479,189 @@ Notes:
 
 ## Dotfiles with dotbot
 
-dotbot here is the Go version (**dotbot-go** v0.4.2), installed by binstaller as `~/.apps/dotbot/bin/dotbot`. The
-base directory is `dotfiles/` and the config is `dotfiles/install.conf.yaml`. The link defaults are
-`relink: true, create: true, force: true`, so an existing file or directory at a target is replaced by the symlink.
-That includes the oh-my-zsh template `~/.zshrc` and the empty `~/.config/ghostty/` and `~/.config/kitty/`.
+**The original repo is the source of truth.** [w0rxbend/system-bootstrap](https://github.com/w0rxbend/system-bootstrap)
+is cloned to `~/.system-bootstrap`, and dotbot links the dotfiles straight out of that clone. This repo keeps no
+copies: `dotfiles/` holds only what has no equivalent in the original repo.
 
-| Linked into `$HOME` | From the repo |
+### The clone
+
+`scripts/system-bootstrap-sync.sh` (phase `system-bootstrap-clone` of `dotfiles`, or `just dotfiles-pull`):
+
+- clones over **https**, so it works before any SSH key exists, and sets
+  `remote.origin.pushurl = git@github.com:w0rxbend/system-bootstrap.git`, so pushes go over SSH once you have a key;
+- when the clone exists, only **fast-forwards** it (`git fetch` + `git merge --ff-only`). Local commits, uncommitted
+  edits, another branch, a detached HEAD or a diverged history are left alone with a warning; nothing is reset,
+  stashed or overwritten. A path that is not a clone of that repo is an error and is not touched;
+- `--check` (the fluxion probe) passes when the clone already contains the remote `HEAD`, so a re-run only pulls when
+  GitHub has new commits.
+
+### The two dotbot configs
+
+dotbot here is the Go version (**dotbot-go** v0.4.2, `~/.apps/dotbot/bin/dotbot`, or fluxion's verified cached
+copy). `scripts/dotfiles-link.sh` runs it once per config, each with its own base directory:
+
+| Config (in this repo) | Base directory | Links |
+|---|---|---|
+| `dotfiles/system-bootstrap.conf.yaml` | `~/.system-bootstrap/.files` | `~/.zshrc`, `~/.tmux.conf`, `~/.ideavimrc`, `~/.wezterm.lua`, `~/.hidden`, `~/.config/{starship.toml, alacritty/{alacritty,theme}.toml, kitty/kitty.conf, nvim, btop, ghostty, zathura/zathurarc, zellij/{config.kdl, layouts/*}, lazygit, lsd, yazi, bottom}`; `~/.config/paperwm/paperwm.conf` **only when PaperWM is installed** |
+| `dotfiles/install.conf.yaml` | `~/.zorin-bootstrap/dotfiles` | `~/.custom.zsh`, `~/system-update.sh`, `~/.config/{,zorin-,GNOME-}xdg-terminals.list` (kitty), `~/.config/environment.d/90-session.conf`, `~/.config/binstaller/config.yaml` and `~/.config/nerd-fonts-installer/config.yaml` (the files fluxion applies, in `config/`), and the [agent skills](#agent-skills) links |
+
+Deliberately not linked from the clone: `niri.conf.yaml` and everything it links (niri, DankMaterialShell,
+danksearch, `90-dms.conf`, `mimeapps.list`, its Alacritty `xdg-terminals.list`), `arch/` and `fedora/` (their
+`install.conf.yaml` and `*-system-update.sh`), the old binstaller/nerd-fonts configs (fluxion applies the Zorin ones in
+`config/`), and `vencord-settings-backup.json` (imported by hand). `paperwm.conf` is a `dconf dump`; after PaperWM
+is installed and linked, load it with `dconf load /org/gnome/shell/extensions/paperwm/ < ~/.config/paperwm/paperwm.conf`.
+
+The link defaults are `relink: true, create: true, force: true`. Before dotbot runs, `dotfiles-link.sh` copies every
+**real** file or directory at a link target (and every symlink that points elsewhere) with `cp -a` to
+**`~/.zorin-bootstrap-backup/`**, keeping its path relative to `$HOME` (`~/.zshrc` ->
+`~/.zorin-bootstrap-backup/.zshrc`, `~/.claude/skills` -> `~/.zorin-bootstrap-backup/.claude/skills`). An older
+backup is never overwritten; a newer, different copy gets a `.YYYYmmdd-HHMMSS` suffix. `create:` gives explicit
+modes (0755, and 0700 for `~/.vim/undo-history`), because dotbot-go v0.4.2 otherwise creates directories as 0777.
+
+### `.zshrc` on Zorin: the `~/.custom.zsh` overlay
+
+`~/.zshrc` is the shared file from the clone. It ends with `[ -f ~/.custom.zsh ] && source ~/.custom.zsh`, and
+`dotfiles/custom.zsh` is linked there. It carries the Zorin/Ubuntu differences that used to be edits in a copied
+`.zshrc`: `~/.cargo/env`, `~/.local/bin` first on PATH (Claude Code, Codex, uv, poetry, starship), `~/.kimi-code/bin`,
+pnpm 11's `$PNPM_HOME/bin`, `~/.apps/yq/bin`, the oh-my-zsh `ubuntu` plugin (the shared plugin list has `dnf`), and
+the `bootstrap` / `dotfiles` aliases. So the tools the old hand-edited `~/.zshrc` put on PATH (claude, codex, kimi)
+stay on PATH; `tests/assertions/dotfiles.sh` checks that an interactive zsh finds them.
+
+### Everyday workflow: edit and commit in `~/.system-bootstrap`
+
+```bash
+nvim ~/.config/kitty/kitty.conf          # the link points into ~/.system-bootstrap/.files
+cd ~/.system-bootstrap && git add -p && git commit -m "kitty: ..." && git push   # SSH pushurl
+just dotfiles-pull                       # later, on any machine: fast-forward the clone
+just dotfiles                            # re-link after adding a file or editing a dotbot config (idempotent)
+just dotfiles-dry                        # preview (backups + dotbot -n)
+just dotfiles-check                      # every link resolves to its source?
+```
+
+Zorin-only files (`dotfiles/`) are edited and committed in this repo. A new shared dotfile goes into
+`~/.system-bootstrap/.files` (commit it there) plus a `link:` line in `dotfiles/system-bootstrap.conf.yaml`. The
+fluxion `dotbot` phase re-runs whenever its probe (`dotfiles-link.sh --check`) finds a missing or wrong link, so
+`./bootstrap.sh --only dotfiles` picks up config edits too.
+
+`~/.system-bootstrap/.files/.config/vesktop/vencord-settings-backup.json` is deliberately **not linked**. It is a
+backup that you import by hand; see the manual steps below.
+
+---
+
+## Agent skills
+
+My agent skills live in **one real, git-tracked folder**, `dotfiles/agents/skills/`, and every coding agent links
+to it (dotbot, `dotfiles/install.conf.yaml`):
+
+| Link | Agent | When |
+|---|---|---|
+| `~/.agents/skills` | Codex (reads it natively) and the shared location | always |
+| `~/.claude/skills` | Claude Code | always |
+| `~/.cursor/skills`, `~/.gemini/skills`, `~/.copilot/skills`, `~/.config/opencode/skills` | Cursor, Gemini CLI, Copilot CLI, opencode | only when that agent's directory exists (dotbot `if:`) |
+
+Layout: one folder per skill, and the **folder name must equal the `name:` in its `SKILL.md`** front matter (the
+file is always called `SKILL.md`). `dotfiles/agents/skills/README.md` has the details and an example.
+
+```
+dotfiles/agents/skills/
+├── README.md          # not a skill (outside any skill folder)
+├── .gitignore         # ignores synced/ (Claude Code's own cache of claude.ai skills)
+└── my-skill/
+    ├── SKILL.md       # ---\nname: my-skill\ndescription: ...\n---
+    └── scripts/  references/   # optional
+```
+
+Verify loop (also run by `tests/assertions/dotfiles.sh`):
+
+```bash
+cd ~/.zorin-bootstrap/dotfiles/agents/skills
+for d in */; do d=${d%/}; [ "$d" = synced ] && continue
+  n=$(sed -n 's/^name:[[:space:]]*//p' "$d/SKILL.md" 2>/dev/null | head -n1 | tr -d "\"'")
+  [ "$n" = "$d" ] && echo "ok   $d" || echo "FAIL $d (name: '${n:-missing SKILL.md}')"; done
+```
+
+`scripts/link-skills.sh` (POSIX `sh`, `just skills`) does the linking without dotbot, for example after installing
+an agent: it points `~/.agents/skills` at the repo folder and `<agent>/skills` at `~/.agents/skills` with
+`ln -sfn`, skips agents that are not installed, leaves correct links alone, and **never overwrites a real
+directory** (it reports it and exits 1; move it to `~/.zorin-bootstrap-backup/` yourself). `--check` and `--dry-run`
+only report.
+
+Notes:
+
+- The first `dotfiles` run replaces the real `~/.claude/skills` directory, after backing it up to
+  `~/.zorin-bootstrap-backup/.claude/skills`. It held only `synced/`, Claude Code's cache of claude.ai skills, which
+  Claude Code recreates inside the linked folder (git-ignored).
+- Codex's bundled skills (`~/.codex/skills/.system`) are never touched. `~/.codex/skills/onboard-new-user` was not
+  moved either: it is the Codex app's first-run onboarding skill (it calls app-only tools such as
+  `setup_codex_step`), not a skill of mine, and it would not work in the other agents.
+
+---
+
+## Vicinae launcher
+
+Module `vicinae` (`profiles/75-vicinae.yaml`, default sequence, after `gnome`):
+
+| Piece | How |
 |---|---|
-| `~/.zshrc`, `~/.tmux.conf`, `~/.ideavimrc`, `~/.wezterm.lua`, `~/.hidden` | `dotfiles/` |
-| `~/system-update.sh` | `dotfiles/zorin-system-update.sh` (the `update` alias) |
-| `~/.config/{starship.toml, alacritty/, kitty/kitty.conf, zathura/zathurarc}` | `dotfiles/` |
-| `~/.config/nvim` (AstroNvim, with `lazy-lock.json`) | `dotfiles/nvim` |
-| `~/.config/{btop, ghostty, zellij, lazygit, lsd, yazi, bottom}` | `dotfiles/.config/...` |
-| `~/.config/{,zorin-,GNOME-}xdg-terminals.list` (all three: kitty) and `~/.config/environment.d/90-session.conf` | `dotfiles/.config/...` |
-| `~/.config/binstaller/config.yaml` | `config/binstaller.yaml` |
-| `~/.config/nerd-fonts-installer/config.yaml` | `config/nerd-fonts/all.yaml` |
+| Vicinae v0.29.0 | There is no .deb/PPA, and the release tarball is built against Arch's Qt6. The official AppImage (sha256-pinned) is extracted into `/usr/local` by the official install script pinned to tag v0.29.0 (sha256-pinned), run **as root** with `--appimage` and `TERM=dumb` (the script aborts without `TERM`). As root it also sets `cap_dac_override` on `vicinae-input-server` and loads `uinput` (snippets, paste). The probe is `vicinae version` = v0.29.0 |
+| Server | The systemd **user** unit the installer ships (`/usr/local/lib/systemd/user/vicinae.service`, `vicinae server --replace`, `WantedBy=graphical-session.target`), enabled and started; `vicinae ping` must answer. `vicinae toggle` does not start a server by itself |
+| GNOME extension | `vicinae@dagimg-dot` v1.7.2 (EGO 8594, shells 46-50), needed on GNOME Wayland for clipboard history, the window switcher, paste, centring and close-on-focus-loss. Installed from the pinned GitHub release zip into `~/.local/share/gnome-shell/extensions/`, schemas compiled, added to `enabled-extensions`, all without the GNOME Shell confirmation dialog. **Active after the next log out/in** (the `session` checkpoint) |
+| `Super+D` | A GNOME custom shortcut running `/usr/local/bin/vicinae toggle` (Vicinae's own global shortcuts need X11 or ext-hotkey-v1, which Mutter lacks). Zorin's schema override binds `Super+D` to show-desktop, so `show-desktop` is set to `['<Primary><Super>d', '<Primary><Alt>d']` first (undo: `gsettings reset org.gnome.desktop.wm.keybindings show-desktop`) |
 
-fluxion and your manual runs therefore **share the same config files**. Neither tool is put on PATH; fluxion keeps
-them in its cache. For a manual run:
+After the re-login, press `Super+D` and type straight away: the launcher should open centred and focused (GNOME's
+`focus-new-windows` is `smart`). Do not start "Vicinae" from the app grid: its launcher runs
+`vicinae server --replace` and fights the systemd copy. Logs: `journalctl --user -u vicinae`. Bumping and undoing are
+described in the profile header.
+
+---
+
+## Testing
+
+`tests/` exercises **the same orchestration** (`bootstrap.sh`) on test profiles that mirror production 1:1:
+
+- `tests/gen-test-profiles.sh` generates `tests/generated/<same path>` from every file in `profiles/`
+  (python3 + PyYAML, `tests/lib/gen_test_profiles.py`). The only changes: `prompt-logout` / `requires-new-shell`
+  restart policies are removed, `interrupt` / `manual` / `shell-reload` steps are removed (and phases left empty,
+  with their `dependsOn` references), `confirm:` guards are dropped, and relative `config:` paths become absolute.
+  Each generated file starts with a comment that lists exactly what changed. Today that is the `session` logout
+  checkpoint and the three manual reminders in `post-checks`.
+- `tests/generated/` is **git-ignored**: it is derived data, regenerated by `bootstrap.sh --test` and
+  `tests/run-tests.sh` before every use (and `--check` shows a diff if it were stale), so it cannot drift.
+- `./bootstrap.sh --test ...` runs those profiles with state names `test-NAME`, so production state
+  (`~/.local/share/fluxion/state/NAME.json`) is untouched.
+
+`tests/run-tests.sh` stages (all by default, `--stages a,b` to pick):
+
+| Stage | What passes |
+|---|---|
+| `validate` | `fluxion validate --strict` + lint of each selected test profile, and `bootstrap.sh --test --dry-run` exits 0 with no checkpoint |
+| `apply` | `bootstrap.sh --test --only MODULES` exits 0 for every module |
+| `idempotency` | The same run again: every module exits 0 and fluxion's summary reports **`0 ok · 0 failed`** (nothing ran). `--strict-idempotency` adds `--re-probe`, so recorded state is ignored and every item must be satisfied by its live probe |
+| `assert` | `tests/assertions/MODULE.sh`: the real outcome. Packages from the profile's own lists, commands at their pinned versions, apt sources and keyrings, docker/containerd active and `docker run --rm hello-world` (with `sudo -n` until the docker group is active), `~/.system-bootstrap` clone and pushurl, every dotbot link resolving into the clone or this repo, skills links + the name check, an interactive zsh finding claude/codex/kimi, gsettings for `Super+1..9` (plus a scan for any other holder), `Super+D` -> vicinae and show-desktop, the vicinae user service and `ping`, login shell and group membership in `/etc/group` |
 
 ```bash
-fluxion tools install binstaller nerd-fonts-installer     # no-op when already cached
-~/.cache/fluxion/tools/binstaller/v0.2.0/binstaller apply --config ~/.config/binstaller/config.yaml
-~/.cache/fluxion/tools/nerd-fonts-installer/v1.0.7/nerd-fonts-installer --config ~/.config/nerd-fonts-installer/config.yaml
+tests/run-tests.sh --list                          # modules, generated profiles, GUI needed?
+tests/run-tests.sh --stages validate --with-optional   # read-only (just test-validate)
+tests/run-tests.sh --assert-only --only gnome,vicinae  # read-only (just test-assert ...)
+tests/run-tests.sh --only gnome,vicinae            # apply + idempotency + assert for two modules
+tests/run-tests.sh                                 # the whole default sequence
+tests/run-tests.sh --container                     # base,apps,toolchains,binaries,shell,dotfiles,wallpapers
+                                                   # in a throwaway ubuntu:24.04 container (needs docker)
+FLUXION_BIN=~/Projects/Github/fluxion.cr-zorin-fixes/bin/fluxion tests/run-tests.sh ...   # another fluxion
 ```
 
-Zorin seeds `~/.config/zorin-xdg-terminals.list` and `~/.config/GNOME-xdg-terminals.list` with GNOME Terminal, and
-`xdg-terminal-exec` reads those desktop-specific lists before the generic one, so all three are linked to the same
-kitty file. `create:` gives explicit modes (0755, and 0700 for `~/.vim/undo-history`), because dotbot-go v0.4.2
-otherwise creates missing directories as 0777.
-
-The `.zshrc` changes compared with the Fedora version:
-
-- the `ubuntu` oh-my-zsh plugin replaces `dnf`;
-- `~/.cargo/env` is sourced;
-- every `/home/worxbend` path became `$HOME`;
-- pyenv, broot and starship are guarded;
-- `~/.apps/yq/bin` and `~/.kimi-code/bin` were added to PATH;
-- the `bootstrap` alias now points at this repo.
-
-**Everyday use:**
-
-```bash
-just dotfiles        # re-link after editing install.conf.yaml or adding files (idempotent)
-just dotfiles-dry    # preview (dotbot -n)
-# without just:
-~/.apps/dotbot/bin/dotbot -d ~/.zorin-bootstrap/dotfiles -c ~/.zorin-bootstrap/dotfiles/install.conf.yaml
-```
-
-Because the targets are symlinks, editing `~/.config/...` edits the repo directly. Commit those changes as usual.
-
-The fluxion `dotfiles` phase only notices changes to its own inline script. Editing `install.conf.yaml` does **not**
-make fluxion re-run it, so use `just dotfiles` after such edits.
-
-`dotfiles/.config/vesktop/vencord-settings-backup.json` is deliberately **not linked**. It is a backup that you
-import by hand; see the manual steps below.
+- `FLUXION_BIN` defaults to the patched dev build `~/Projects/Github/fluxion.cr-zorin-fixes/bin/fluxion` when it
+  exists, else the fluxion on PATH. `ASSERT_NETWORK=0` skips checks that need the network (`apt-get update`,
+  `docker run`, the clone's `ls-remote`).
+- Logs, the per-stage `--report` files and `summary.tsv` go to `tests/logs/<timestamp>/` (git-ignored; `--log-dir`
+  to change).
+- Each assertion file also runs on its own: `tests/assertions/vicinae.sh`.
+- Container mode builds `tests/container/Dockerfile` (same user name, uid and home path as the host, passwordless
+  sudo **inside the image only**) and runs the non-GUI modules there with `ASSERT_CONTEXT=container`, which skips
+  checks that need systemd, snapd, flatpak or a GNOME session. Modules that need the desktop session are refused.
+- fluxion 0.3.1 reports every **apt package as "not installed"** in its probes (it replaces the tab in
+  `dpkg-query`'s output with a space before parsing it; see the caveats table). Plain idempotency is unaffected (the
+  second run skips completed phases), but `--strict-idempotency` needs a fluxion with that fixed.
 
 ---
 
@@ -501,10 +676,12 @@ Put a new item in the module where it belongs, keep it in the right phase, then 
 | A flatpak | `profiles/60-desktop-apps.yaml` | Add the full app ID to a `flatpak-*` category phase (`flatpak remote-info flathub ID` to check it) |
 | A snap | `profiles/60-desktop-apps.yaml`, phase `snaps` | Strict snaps: `tool-packages` with `backend: snap`. Classic snaps: a `commands` item with `sudo: true`, `run: snap install NAME --classic` and `unless: snap list NAME` |
 | A Rust CLI | `profiles/30-toolchains.yaml`, phase `rust-crates` | Add the crate name (installed with cargo-binstall) |
-| A release binary in `~/.apps` | `config/binstaller.yaml` | Add a binstaller entry (pin `version` + `checksum` when possible), then add its path to the `binaries-binstaller` probe in `profiles/40-binaries.yaml` and its `bin` dir to PATH in `dotfiles/.zshrc` |
+| A release binary in `~/.apps` | `config/binstaller.yaml` | Add a binstaller entry (pin `version` + `checksum` when possible), then add its path to the `binaries-binstaller` probe in `profiles/40-binaries.yaml`, its `bin` dir to PATH (shared: `~/.system-bootstrap/.files/.zshrc`; Zorin-only: `dotfiles/custom.zsh`), and a check to `tests/assertions/binaries.sh` |
 | A Nerd Font | `config/nerd-fonts/0N-*.yaml` and `all.yaml` | Keep each batch under ~15 families (fixed 15 min timeout per batch) |
 | A curl/installer script | the module that owns the tool | Prefer `shell-scripts` with `url` + `sha256` (+ `shell: bash` if it needs bash). Otherwise a `commands` item with `creates:` and a `probeCommand` so re-runs skip it |
-| A dotfile | `dotfiles/` + `dotfiles/install.conf.yaml` | Add the file and a `link:` entry, then `just dotfiles` |
+| A shared dotfile | `~/.system-bootstrap/.files/` + `dotfiles/system-bootstrap.conf.yaml` | Add and commit the file in the clone (push from there), add a `link:` entry here, then `just dotfiles` |
+| A Zorin-only dotfile | `dotfiles/` + `dotfiles/install.conf.yaml` | Add the file and a `link:` entry, then `just dotfiles` |
+| An agent skill | `dotfiles/agents/skills/<name>/SKILL.md` | Folder name = `name:` in the front matter; commit it. Every agent sees it through the links |
 | A GNOME setting | `profiles/70-gnome.yaml` | Add a `gsettings set` line to the script and extend its `probeCommand` if it matters |
 
 Rules the existing profiles follow:
@@ -514,14 +691,18 @@ Rules the existing profiles follow:
   **leaf phase** (nothing depends on it) with `execution: { continueOnError: true }`.
 - Shell text must not contain `${...}` profile variables; pass them through `args:` / `env:` and use plain `$HOME`.
 - Anything that needs root uses `sudo: true` (fluxion calls `sudo -n`; `bootstrap.sh` keeps the ticket warm).
-- A brand-new module file: add it to `DEFAULT_PROFILES` (or `OPTIONAL_PROFILES`) in `bootstrap.sh`, copy the
+- Every module has post-conditions in `tests/assertions/<module>.sh`; extend them when you add something that
+  matters. The test profiles regenerate themselves.
+- A brand-new module file: add it to `DEFAULT_PROFILES` (or `OPTIONAL_PROFILES`) in `bootstrap.sh`, add
+  `tests/assertions/<module>.sh` (function `assert_<module with _ for ->`), copy the
   `host-check` phase from any existing profile, and give it a unique `metadata.name`.
 
 Then check it:
 
 ```bash
-just validate                                   # or: scripts/validate-all.sh
+just validate                                   # or: scripts/validate-all.sh (prod + test profiles, scripts)
 ./bootstrap.sh --dry-run --only NAME            # exact commands, no changes
+tests/run-tests.sh --only NAME                  # apply + idempotency + assertions on the test profile
 ./bootstrap.sh --only NAME                      # apply
 ```
 
@@ -547,6 +728,8 @@ just validate                                   # or: scripts/validate-all.sh
   fluxion state reset docker --force            # forget everything for the module (just state-reset docker)
   ```
 
+- `tests/run-tests.sh` checks this for real: after the test apply, a second run must report `0 ok · 0 failed` for
+  every module (see [Testing](#testing)).
 - `--re-probe` ignores the recorded state and trusts only live probes. It is useful after removing something by
   hand.
 - To run one module: `./bootstrap.sh --only toolchains`. To resume after a failure: `./bootstrap.sh --from shell`.
@@ -564,7 +747,8 @@ just validate                                   # or: scripts/validate-all.sh
 | Caveat | How this repo handles it |
 |---|---|
 | **Zorin is not detected as `ubuntu`** (`ID=zorin`) | `target.os` says ubuntu/noble, and no step uses `when: {distribution: ubuntu}`. Every profile's `host-check` asserts noble and `apt-get` |
-| **`dotfiles-apply` is broken**: it passes `--config`, but dotbot-go only accepts `-c` | `80-dotfiles` runs dotbot from a `shell-scripts` step (`dotbot -d dotfiles -c dotfiles/install.conf.yaml`) |
+| **`dotfiles-apply` is broken**: it passes `--config`, but dotbot-go only accepts `-c` (and it takes one config, while two base directories are needed here) | `80-dotfiles` runs `scripts/dotfiles-link.sh` from a `shell-scripts` step: `dotbot -d ~/.system-bootstrap/.files -c dotfiles/system-bootstrap.conf.yaml`, then `dotbot -d dotfiles -c dotfiles/install.conf.yaml`, with `--check` as the probe |
+| **apt package probes always say "not installed"**: the output sanitizer turns the tab in `dpkg-query -f='${Status}\t${Version}'` into a space, so the probe never sees `install ok installed` (in 0.3.1 and current main, `src/fluxion/executor/probe.cr` + `redaction.cr`) | `--skip-already-installed` still skips completed phases, and `apt-get install` of an installed package changes nothing. Assertions check packages with `dpkg-query` directly. `tests/run-tests.sh --strict-idempotency` needs a fluxion with this fixed |
 | **fluxion never prompts for sudo**: it only uses `sudo -n` | `bootstrap.sh` runs `sudo -v` once, then a keep-alive loop runs until exit. Ubuntu's sudo ticket lasts 15 minutes and TeX Live alone takes longer |
 | **PATH is read once, at start-up** | One fluxion process per module, and `bootstrap.sh` exports all future tool directories up front, so later modules see earlier installs |
 | **`when:` is evaluated at load time** | Profiles do not use `commandExists` guards on tools that the same run installs |
@@ -572,7 +756,8 @@ just validate                                   # or: scripts/validate-all.sh
 | **A failed phase blocks everything that depends on it** | `dependsOn` lists only real prerequisites, fragile lists sit in leaf phases, and list phases use `continueOnError: true` |
 | **`${...}` is refused in shell text** | Scripts use plain `$HOME` and take profile values through `args`/`env` |
 | **`apt-repository`/`gpg-key` always dearmor** | Every keyring path ends in `.gpg`. An `.asc` path would end up holding binary data and break apt |
-| **`prompt-logout` stops the run** (in dry-run too) | It appears only in the last module, `session` |
+| **`prompt-logout` stops the run** (in dry-run too) | It appears only in the last module, `session`; the generated test profiles drop it |
+| **`gext install` pops a GNOME Shell confirmation dialog** (D-Bus backend) and blocks the run | `gnome-extensions` uses `gext -F install` (filesystem backend); Vicinae's extension is unpacked from a pinned zip. Probes check files + `enabled-extensions`, because `gnome-extensions info` only knows new extensions after a re-login |
 | **No `DEBIAN_FRONTEND`** | Debconf is preseeded for mscorefonts and wireshark |
 | **Checksum pins go stale** when upstream scripts change | The run fails loudly with a digest mismatch. Recompute the pin (see [Updating](#updating)) |
 
@@ -595,7 +780,7 @@ just validate                                   # or: scripts/validate-all.sh
 4. **Sign in** to 1Password, Claude Desktop, ChatGPT, Claude Code (`claude`), Codex (`codex`), Kimi (`kimi`), VS
    Code settings sync, Spotify, Discord/Vesktop and Telegram.
 5. **Vesktop:** open Vencord settings, go to *Backup & Restore*, and import
-   `~/.zorin-bootstrap/dotfiles/.config/vesktop/vencord-settings-backup.json`.
+   `~/.system-bootstrap/.files/.config/vesktop/vencord-settings-backup.json`.
 6. **Brave "GitHub" web app:** in Brave, open github.com, then go to menu → *Cast, save and share* → *Install page as
    app*. Browsers create these web apps themselves, so they cannot be scripted in any sensible way.
 7. **Regional formats:** en_GB formats and A4 paper were set in *Settings → Region & Language*, which writes
@@ -617,6 +802,10 @@ just validate                                   # or: scripts/validate-all.sh
 10. **Neovim:** start `nvim` once so lazy.nvim installs the plugins listed in `lazy-lock.json`.
 11. **tmux:** the plugins are already installed by `dotfiles`. Inside tmux, `prefix + I` re-installs them.
 12. **droidcam alias:** it needs `scrcpy` 2.2 or newer, which the bootstrap does not install.
+13. **Vicinae:** after the re-login press `Super+D` and type straight away; the launcher should open centred with
+    keyboard focus. `gnome-extensions info vicinae@dagimg-dot` should now say ACTIVE (clipboard history needs it).
+14. **Backups:** anything dotbot replaced is in `~/.zorin-bootstrap-backup/` (same paths as in `$HOME`). Delete it
+    once you are happy.
 
 ---
 
@@ -625,7 +814,7 @@ just validate                                   # or: scripts/validate-all.sh
 ```bash
 ./bootstrap.sh --only obs                 # OBS Studio + 10 plugins (flatpak)
 ./bootstrap.sh --only zorin-pro-parity    # the Zorin OS Pro flatpak set, for Core / non-Pro reinstalls
-./bootstrap.sh --only gnome-extensions    # gext + 6 extensions (run in the GNOME session)
+./bootstrap.sh --only gnome-extensions    # gext -F + 6 extensions (run in the GNOME session)
 ./bootstrap.sh --only wallpapers          # ~109 MB of wallpapers from the old repo
 ./bootstrap.sh --only post-checks         # after re-login
 ```
@@ -638,8 +827,9 @@ just validate                                   # or: scripts/validate-all.sh
   Gradia, Blanket, NewsFlash) and `obs` (OBS Studio). Already-installed flatpaks are skipped, so the overlap costs
   nothing.
 - `gnome-extensions`: dash-to-dock (conflicts with the Zorin Taskbar), tilingshell (tiling) and
-  appindicator/status-icons (Zorin ships them) are deliberately left out. Log out and back in afterwards, or restart
-  GNOME Shell, then enable the extensions in Extension Manager if needed.
+  appindicator/status-icons (Zorin ships them) are deliberately left out. `gext -F install` unpacks each extension
+  and adds it to `enabled-extensions` without the GNOME Shell confirmation dialog that plain `gext install` shows.
+  Log out and back in afterwards: GNOME Shell on Wayland only loads new extensions at login.
 - `wallpapers`: the images stay out of this repo.
 
 ---
@@ -648,7 +838,7 @@ just validate                                   # or: scripts/validate-all.sh
 
 | Item | Reason |
 |---|---|
-| niri, DankMaterialShell/dms/danksearch, PaperWM (`paperwm.conf`), sway, waybar, fuzzel, rofi, hypr*, COSMIC/SDDM tweaks, the `multibg-wayland` crate, `assets/icons`, `niri.conf.yaml` | Tiling and Arch desktop setup. Zorin keeps its own GNOME desktop |
+| niri, DankMaterialShell/dms/danksearch, PaperWM itself, sway, waybar, fuzzel, rofi, hypr*, COSMIC/SDDM tweaks, the `multibg-wayland` crate, `assets/icons`, `niri.conf.yaml` | Tiling and Arch desktop setup. Zorin keeps its own GNOME desktop. (`paperwm.conf` is still linked from the clone, but only if you install PaperWM yourself) |
 | dash-to-dock, tilingshell extensions | Conflict with the Zorin Taskbar and layouts; tiling is out of scope |
 | podman, podman-docker, toolbox, buildah | Replaced by Docker CE and distrobox |
 | RPM Fusion, the ffmpeg swap, fedora-workstation-repositories, the Fedora/Arch dotbot overlays, `fedora-/arch-system-update.sh` | Only apply to Fedora or Arch. Ubuntu's `ubuntu-restricted-extras` covers the codecs, and `zorin-system-update.sh` replaces the update scripts |
@@ -657,7 +847,7 @@ just validate                                   # or: scripts/validate-all.sh
 | `org.telegram.desktop` flatpak | The snap is kept |
 | `com.oguzhaninan.Stacer` flatpak | Removed from Flathub. Stacer comes from apt instead |
 | apt `kitty`, `neovim` (0.9.5), `yq` (Python flavour), `fd-find`, `gnome-shell-extension-manager` | Replaced by upstream kitty, binstaller's neovim and mikefarah yq, cargo's `fd`, and the Extension Manager flatpak |
-| `mimeapps.list` | The old scripts never actually linked it, and Zorin/GNOME manages it |
+| `mimeapps.list` | Only the niri config links it in the old repo, and Zorin/GNOME manages it |
 | coursier, platformio, deno, nimble, JetBrains Toolbox, Android SDK, opencode, mill, envman, `~/.fzf.zsh`, scrcpy | Referenced by the old `.zshrc`, but nothing installed them and they do not appear in the host history. The `.zshrc` lines stay behind guards, so installing any of them later just works |
 | Automatic 1Password debsig policy | Not enforced by dpkg on Ubuntu unless you set up debsig-verify (see the manual steps) |
 | The old repo's formatting CI (shfmt, stylua, prettier, ...) | fluxion `validate`/`lint` together with `scripts/validate-all.sh` is the quality gate here |
@@ -703,6 +893,7 @@ Then edit the value in the profile and run `just validate`.
 | Crystal OBS key sha256 (the key expires 2027-09-22) | `profiles/10-apps.yaml` |
 | Flathub descriptor sha256 | `profiles/60-desktop-apps.yaml`, `profiles/optional/obs.yaml`, `profiles/optional/zorin-pro-parity.yaml` |
 | binstaller tool versions | `config/binstaller.yaml` |
+| Vicinae version, AppImage and install-script sha256, GNOME extension zip version and sha256 (also the literal versions in the probes) | `profiles/75-vicinae.yaml` |
 | fluxion itself | `FLUXION_VERSION` in `bootstrap.sh`. Read the fluxion changelog before bumping it, because the caveats above are specific to 0.3.1 |
 
 ---
@@ -757,9 +948,22 @@ the current shell, use `newgrp docker`.
 was not installed and the `docker` group does not exist. Fix `./bootstrap.sh --only docker` first, then run
 `./bootstrap.sh --only session`.
 
-**`git status` shows changes in `dotfiles/.zshrc`:** an installer ran after dotbot and appended to the linked file.
-Check with `git -C ~/.zorin-bootstrap diff dotfiles/.zshrc`. Either keep the lines you want (most are already
-covered by the guarded blocks) or discard them with `git checkout dotfiles/.zshrc`.
+**`git status` in `~/.system-bootstrap` shows changes in `.files/.zshrc`:** an installer ran after dotbot and
+appended to the linked file. Check with `git -C ~/.system-bootstrap diff .files/.zshrc`. Move what you want to keep
+into `dotfiles/custom.zsh` (Zorin-only) or commit it in the clone (shared), and discard the rest with
+`git -C ~/.system-bootstrap checkout .files/.zshrc`. `system-bootstrap-sync.sh` never overwrites such edits: a
+fast-forward that would touch them is refused with a warning.
+
+**`dotfiles` fails with "~/.system-bootstrap exists but is not a git clone" (or a clone of another repo):** move that
+directory away and re-run `./bootstrap.sh --only dotfiles`; the script never deletes it.
+
+**`Super+1..9` does nothing:** something else still grabs the keys. `tests/assertions/gnome.sh` lists every gsettings
+key holding `Super+N`; the usual culprit is a Zorin Dash/Taskbar `hot-keys=true` after a Zorin update. Re-run
+`./bootstrap.sh --only gnome`.
+
+**`Super+D` still shows the desktop / does nothing:** check `gsettings get org.gnome.desktop.wm.keybindings
+show-desktop` (must not contain `<Super>d`) and `systemctl --user status vicinae` (`vicinae toggle` needs the
+server). `tests/assertions/vicinae.sh` checks all of it.
 
 **`tool-packages` says its backend is missing** (`cargo-binstall`, `pipx`, ...): fluxion was started without the
 exported PATH. Always go through `./bootstrap.sh` or `just`.

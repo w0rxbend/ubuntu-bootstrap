@@ -3,7 +3,8 @@
 #
 # Run alone:   ./bootstrap.sh --only post-checks
 # Contents:    - verify: assert steps (docker group + daemon, zsh login shell, VictorMono Nerd Font, neovim,
-#                key CLI binaries). Each is its own leaf phase so every check reports independently.
+#                key CLI binaries, Vicinae extension active + server answering). Each is its own leaf phase so
+#                every check reports independently.
 #              - manual steps with probes: gh login, SSH key, duplicate Telegram flatpak removed. They pass once
 #                the probe succeeds; until then they fail with the instruction in the message.
 # Caveats:     - `docker run --rm hello-world` pulls a tiny image from Docker Hub (network needed).
@@ -85,6 +86,15 @@ spec:
               done;
               if [ -n "$missing" ]; then echo "missing:$missing" >&2; exit 1; fi
             message: "Key CLI binaries missing (see output): run ./bootstrap.sh --only toolchains and --only binaries"
+
+    - name: verify-vicinae
+      dependsOn: [host-check]
+      steps:
+        - name: post-vicinae-extension-active
+          kind: assert
+          spec:
+            command: "gnome-extensions info vicinae@dagimg-dot 2>/dev/null | grep -Eq 'State: (ACTIVE|ENABLED)' && /usr/local/bin/vicinae ping >/dev/null"
+            message: "Vicinae: the GNOME extension is not active or the server does not answer. Log out/in after ./bootstrap.sh --only vicinae; check: systemctl --user status vicinae"
 
     - name: manual-gh-auth
       dependsOn: [host-check]

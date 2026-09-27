@@ -12,6 +12,8 @@
 #   ./bootstrap.sh --from shell       # resume the default sequence at a module
 #   ./bootstrap.sh --list             # list modules
 #   ./bootstrap.sh --only apps --tui  # fluxion's interactive selector/TUI (off by default)
+#   ./bootstrap.sh --test --only gnome   # same orchestration on the generated test profiles
+#                                        # (tests/generated: no logout checkpoint, state names test-*)
 #
 # The script never reads, stores or passes a password. It calls `sudo -v` once in your terminal
 # and keeps that ticket warm while fluxion runs; fluxion itself only ever uses `sudo -n`.
@@ -29,13 +31,14 @@ DEFAULT_PROFILES=(
     "shell:profiles/50-shell.yaml:oh-my-zsh + plugins, TPM, starship, kitty, ghostty"
     "desktop-apps:profiles/60-desktop-apps.yaml:flatpaks, snaps, Claude Code/Codex/Kimi CLIs, Zed, Paseo"
     "gnome:profiles/70-gnome.yaml:GNOME/Zorin workspaces and keybindings"
-    "dotfiles:profiles/80-dotfiles.yaml:dotbot-go links, tmux plugins, broot launcher"
+    "vicinae:profiles/75-vicinae.yaml:Vicinae launcher, user service, GNOME extension, Super+D toggle"
+    "dotfiles:profiles/80-dotfiles.yaml:~/.system-bootstrap clone, dotbot-go links, skills, tmux plugins, broot"
     "session:profiles/90-session.yaml:zsh login shell, docker/libvirt/kvm groups, logout prompt"
 )
 OPTIONAL_PROFILES=(
     "obs:profiles/optional/obs.yaml:OBS Studio + plugins (flatpak)"
     "zorin-pro-parity:profiles/optional/zorin-pro-parity.yaml:the Zorin OS Pro flatpak set (for Core/reinstalls)"
-    "gnome-extensions:profiles/optional/gnome-extensions.yaml:extra GNOME Shell extensions via gext"
+    "gnome-extensions:profiles/optional/gnome-extensions.yaml:extra GNOME Shell extensions via gext -F"
     "wallpapers:profiles/optional/wallpapers.yaml:wallpapers from the old system-bootstrap repo"
     "post-checks:profiles/optional/post-checks.yaml:verification + manual-step reminders (after re-login)"
 )
@@ -48,6 +51,7 @@ EXIT_CHECKPOINT=75
 EXIT_INTERRUPTED=130
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+TEST_PROFILES_DIR="tests/generated"
 
 # --------------------------------------------------------------------------------------------
 # Output helpers
@@ -86,6 +90,16 @@ Selection:
   --only a,b         run only these modules (default or optional short names), in table order
   --from NAME        start the default sequence at NAME (e.g. after fixing a failure)
 
+Profiles and state (the orchestration is identical; only the files/state names change):
+  --test             use the generated test profiles ($TEST_PROFILES_DIR, regenerated first by
+                     tests/gen-test-profiles.sh: no logout checkpoint or manual/interrupt steps)
+                     with state names 'test-NAME'
+  --profiles-dir DIR read each module's profile from DIR instead of profiles/ (same relative
+                     layout: DIR/00-base.yaml, DIR/optional/obs.yaml, ...)
+  --state-prefix P   prefix for the fluxion state names (default: none; --test uses 'test-')
+  --report FILE      append one line per module to FILE: name, rc, note, seconds, and fluxion's
+                     Summary counts (ok, failed, skipped, would run) for apply/dry-run (tests/)
+
 Pass-through to fluxion apply/dry-run:
   --yes, -y          approve items that declare confirm
   --tui              open fluxion's full-screen selector/TUI per module (apply only; press
@@ -97,6 +111,7 @@ Pass-through to fluxion apply/dry-run:
   -h, --help         this help
 
 Environment:
+  FLUXION_BIN        fluxion executable to use (default: fluxion on PATH, installed if missing)
   FLUXION_VERSION    release to install when fluxion is missing (default: v0.3.1)
 
 Default sequence: $(default_names | tr '\n' ' ')
@@ -139,25 +154,37 @@ is_default() {
     return 1
 }
 
+# Maps a table path (profiles/...) to the file actually used: PROFILES_DIR/... when --profiles-dir or
+# --test is given. Always returns an absolute path.
+profile_path() {
+    local rel="${1#profiles/}"
+    if [[ -n "$PROFILES_DIR" ]]; then
+        printf '%s/%s' "$PROFILES_DIR" "$rel"
+    else
+        printf '%s/profiles/%s' "$REPO_DIR" "$rel"
+    fi
+}
+display_path() { printf '%s' "${1#"$REPO_DIR"/}"; }
+
 list_profiles() {
     local e name file mark
     printf '%sDefault sequence%s (./bootstrap.sh)\n' "$C_BOLD" "$C_RESET"
     local i=1
     for e in "${DEFAULT_PROFILES[@]}"; do
         name="$(entry_name "$e")"
-        file="$(entry_file "$e")"
+        file="$(profile_path "$(entry_file "$e")")"
         mark=' '
-        [[ -f "$REPO_DIR/$file" ]] || mark='!'
-        printf ' %2d %s %-18s %-40s %s%s%s\n' "$i" "$mark" "$name" "$file" "$C_DIM" "$(entry_desc "$e")" "$C_RESET"
+        [[ -f "$file" ]] || mark='!'
+        printf ' %2d %s %-18s %-40s %s%s%s\n' "$i" "$mark" "$name" "$(display_path "$file")" "$C_DIM" "$(entry_desc "$e")" "$C_RESET"
         i=$((i + 1))
     done
     printf '\n%sOptional%s (./bootstrap.sh --only NAME)\n' "$C_BOLD" "$C_RESET"
     for e in "${OPTIONAL_PROFILES[@]}"; do
         name="$(entry_name "$e")"
-        file="$(entry_file "$e")"
+        file="$(profile_path "$(entry_file "$e")")"
         mark=' '
-        [[ -f "$REPO_DIR/$file" ]] || mark='!'
-        printf '    %s %-18s %-40s %s%s%s\n' "$mark" "$name" "$file" "$C_DIM" "$(entry_desc "$e")" "$C_RESET"
+        [[ -f "$file" ]] || mark='!'
+        printf '    %s %-18s %-40s %s%s%s\n' "$mark" "$name" "$(display_path "$file")" "$C_DIM" "$(entry_desc "$e")" "$C_RESET"
     done
     printf '\n%s! = profile file missing%s\n' "$C_DIM" "$C_RESET"
 }
@@ -170,6 +197,11 @@ ONLY=''
 FROM=''
 PASS_ARGS=()
 USE_TUI=0
+PROFILES_DIR=''
+STATE_PREFIX=''
+TEST_MODE=0
+REPORT_FILE=''
+LIST_ONLY=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -178,10 +210,26 @@ while [[ $# -gt 0 ]]; do
         --plan) MODE=plan ;;
         --status) MODE=status ;;
         --failed) MODE=failed ;;
-        --list)
-            list_profiles
-            exit 0
+        --list) LIST_ONLY=1 ;;
+        --test) TEST_MODE=1 ;;
+        --profiles-dir)
+            [[ $# -ge 2 ]] || die "--profiles-dir needs a directory"
+            PROFILES_DIR="$2"
+            shift
             ;;
+        --profiles-dir=*) PROFILES_DIR="${1#--profiles-dir=}" ;;
+        --state-prefix)
+            [[ $# -ge 2 ]] || die "--state-prefix needs a value"
+            STATE_PREFIX="$2"
+            shift
+            ;;
+        --state-prefix=*) STATE_PREFIX="${1#--state-prefix=}" ;;
+        --report)
+            [[ $# -ge 2 ]] || die "--report needs a file"
+            REPORT_FILE="$2"
+            shift
+            ;;
+        --report=*) REPORT_FILE="${1#--report=}" ;;
         --only)
             [[ $# -ge 2 ]] || die "--only needs a comma-separated list of modules"
             ONLY="$2"
@@ -213,6 +261,29 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ -n "$ONLY" && -n "$FROM" ]]; then die "--only and --from cannot be combined"; fi
+
+if [[ $TEST_MODE -eq 1 ]]; then
+    [[ -n "$PROFILES_DIR" ]] || PROFILES_DIR="$TEST_PROFILES_DIR"
+    [[ -n "$STATE_PREFIX" ]] || STATE_PREFIX="test-"
+fi
+if [[ -n "$PROFILES_DIR" ]]; then
+    [[ "$PROFILES_DIR" == /* ]] || PROFILES_DIR="$REPO_DIR/$PROFILES_DIR"
+    PROFILES_DIR="${PROFILES_DIR%/}"
+fi
+if [[ -n "$STATE_PREFIX" && ! "$STATE_PREFIX" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    die "--state-prefix may only contain letters, digits, '.', '_' and '-'"
+fi
+if [[ -n "$REPORT_FILE" && "$REPORT_FILE" != /* ]]; then REPORT_FILE="$PWD/$REPORT_FILE"; fi
+
+# The test profiles are generated from profiles/ so they cannot drift: regenerate before every --test run.
+if [[ $TEST_MODE -eq 1 && "$PROFILES_DIR" == "$REPO_DIR/$TEST_PROFILES_DIR" ]]; then
+    "$REPO_DIR/tests/gen-test-profiles.sh" --quiet || die "tests/gen-test-profiles.sh failed"
+fi
+
+if [[ $LIST_ONLY -eq 1 ]]; then
+    list_profiles
+    exit 0
+fi
 
 # Build the selection (always in table order).
 SELECTED=()
@@ -269,17 +340,28 @@ fi
 # its backends (cargo-binstall, pipx, ...) on this PATH. Export everything the modules install.
 export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.go/bin:$HOME/.go-workspace/bin:$HOME/.apps/dotbot/bin:$HOME/.apps/neovim/bin:$HOME/.apps/yq/bin:$HOME/.apps/helm/bin:$HOME/.apps/kustomize/bin:$HOME/.local/share/pnpm/bin:$HOME/.juliaup/bin:$PATH"
 
-if ! command -v fluxion >/dev/null 2>&1; then
-    command -v curl >/dev/null 2>&1 || die "curl is required to install fluxion: sudo apt install -y curl"
-    command -v tar >/dev/null 2>&1 || die "tar is required to install fluxion"
-    info "fluxion not found; installing $FLUXION_VERSION to ~/.local/bin"
-    curl --proto '=https' --tlsv1.2 -sSfL "$FLUXION_INSTALL_URL" | sh -s -- --version "$FLUXION_VERSION"
-    hash -r
-    command -v fluxion >/dev/null 2>&1 || die "fluxion install failed (expected ~/.local/bin/fluxion)"
+if [[ -n "${FLUXION_BIN:-}" ]]; then
+    [[ -x "$FLUXION_BIN" ]] || die "FLUXION_BIN=$FLUXION_BIN is not an executable file"
+else
+    if ! command -v fluxion >/dev/null 2>&1; then
+        command -v curl >/dev/null 2>&1 || die "curl is required to install fluxion: sudo apt install -y curl"
+        command -v tar >/dev/null 2>&1 || die "tar is required to install fluxion"
+        info "fluxion not found; installing $FLUXION_VERSION to ~/.local/bin"
+        curl --proto '=https' --tlsv1.2 -sSfL "$FLUXION_INSTALL_URL" | sh -s -- --version "$FLUXION_VERSION"
+        hash -r
+        command -v fluxion >/dev/null 2>&1 || die "fluxion install failed (expected ~/.local/bin/fluxion)"
+    fi
+    FLUXION_BIN="$(command -v fluxion)"
 fi
-FLUXION_BIN="$(command -v fluxion)"
+# Scripts the profiles run (dotfiles-link.sh's dotbot fallback) use the same binary.
+export FLUXION_BIN
 FLUXION_VER_STR="$("$FLUXION_BIN" --version 2>/dev/null || echo 'fluxion ?')"
 info "using $FLUXION_VER_STR ($FLUXION_BIN)"
+if [[ -n "$PROFILES_DIR" ]]; then
+    info "profiles from $(display_path "$PROFILES_DIR"); state names: ${STATE_PREFIX}NAME"
+elif [[ -n "$STATE_PREFIX" ]]; then
+    info "state names: ${STATE_PREFIX}NAME"
+fi
 case "$FLUXION_VER_STR" in
     *" ${FLUXION_VERSION#v}"*) ;;
     *) warn "this repo was written and tested against fluxion ${FLUXION_VERSION#v}; other versions may behave differently." ;;
@@ -329,17 +411,39 @@ record() {
     RESULT_CODES+=("$2")
     RESULT_NOTES+=("$3")
     RESULT_SECS+=("$4")
+    if [[ -n "$REPORT_FILE" ]]; then
+        # name rc note seconds ok failed skipped would-run   (tab-separated; '-' = not applicable)
+        local counts="$LAST_COUNTS"
+        [[ -n "$counts" ]] || counts=$'-\t-\t-\t-'
+        printf '%s\t%s\t%s\t%s\t%s\n' "$1" "$2" "$3" "$4" "$counts" >>"$REPORT_FILE"
+    fi
+    LAST_COUNTS=''
 }
+
+# Reads fluxion's closing "Summary: N ok · N failed · N skipped [· N would run]" line from a log and
+# prints "ok<TAB>failed<TAB>skipped<TAB>would-run".
+summary_counts() {
+    local line ok failed skipped would
+    line="$(sed 's/\x1b\[[0-9;]*m//g' "$1" | grep -a '^Summary:' | tail -n1 || true)"
+    [[ -n "$line" ]] || return 0
+    ok="$(grep -Eo '[0-9]+ ok' <<<"$line" | grep -Eo '^[0-9]+' || echo 0)"
+    failed="$(grep -Eo '[0-9]+ failed' <<<"$line" | grep -Eo '^[0-9]+' || echo 0)"
+    skipped="$(grep -Eo '[0-9]+ skipped' <<<"$line" | grep -Eo '^[0-9]+' || echo 0)"
+    would="$(grep -Eo '[0-9]+ would run' <<<"$line" | grep -Eo '^[0-9]+' || echo 0)"
+    printf '%s\t%s\t%s\t%s' "$ok" "$failed" "$skipped" "$would"
+}
+LAST_COUNTS=''
 
 run_profile() {
     # $1 = entry; sets global LAST_RC
     local name file rc=0 started
     name="$(entry_name "$1")"
-    file="$(entry_file "$1")"
+    file="$(profile_path "$(entry_file "$1")")"
+    local state="${STATE_PREFIX}${name}"
     started=$SECONDS
     LAST_RC=0
 
-    printf '\n%s━━━ %s%s  %s(%s)%s\n' "$C_BOLD" "$name" "$C_RESET" "$C_DIM" "$file" "$C_RESET"
+    printf '\n%s━━━ %s%s  %s(%s)%s\n' "$C_BOLD" "$name" "$C_RESET" "$C_DIM" "$(display_path "$file")" "$C_RESET"
 
     if [[ ! -f "$file" ]]; then
         err "$file not found"
@@ -369,7 +473,7 @@ run_profile() {
         status | failed)
             local flag=--summary
             [[ "$MODE" == failed ]] && flag=--failed
-            "$FLUXION_BIN" status -c "$file" --profile "$name" "$flag" --no-tui || rc=$?
+            "$FLUXION_BIN" status -c "$file" --profile "$state" "$flag" --no-tui || rc=$?
             record "$name" "$rc" "$([[ $rc -eq 0 ]] && echo probed || echo 'status failed')" $((SECONDS - started))
             LAST_RC=$rc
             return
@@ -387,7 +491,7 @@ run_profile() {
 
     local sub=apply
     [[ "$MODE" == dry-run ]] && sub=dry-run
-    local cmd=("$FLUXION_BIN" "$sub" -c "$file" --profile "$name" --skip-already-installed)
+    local cmd=("$FLUXION_BIN" "$sub" -c "$file" --profile "$state" --skip-already-installed)
     # Plain output by default so the sequence runs unattended. The TUI waits for enter/q per
     # module, and backing out of its selector exits 0, which would be reported as "ok".
     if [[ "$MODE" == dry-run || $USE_TUI -eq 0 ]]; then
@@ -397,7 +501,17 @@ run_profile() {
         cmd+=("${PASS_ARGS[@]}")
     fi
     printf '%s$ %s%s\n' "$C_DIM" "${cmd[*]}" "$C_RESET"
-    "${cmd[@]}" || rc=$?
+    if [[ -n "$REPORT_FILE" && ( "$MODE" == dry-run || $USE_TUI -eq 0 ) ]]; then
+        # Keep fluxion's output on screen and read its Summary line afterwards.
+        local log
+        log="$(mktemp)"
+        "${cmd[@]}" 2>&1 | tee "$log" || true
+        rc=${PIPESTATUS[0]}
+        LAST_COUNTS="$(summary_counts "$log")"
+        rm -f "$log"
+    else
+        "${cmd[@]}" || rc=$?
+    fi
 
     local note
     case $rc in
@@ -466,14 +580,16 @@ if [[ -n "$CHECKPOINT" ]]; then
 fi
 
 if [[ $FAILED -gt 0 ]]; then
+    RERUN_FLAG=''
+    [[ $TEST_MODE -eq 1 ]] && RERUN_FLAG='--test '
     echo
     err "$FAILED module(s) failed. To investigate one (NAME = module, FILE = its profile):"
     cat >&2 <<EOF
-      fluxion status  -c FILE --profile NAME --failed
-      fluxion explain -c FILE --profile NAME --phase PHASE
-      fluxion state show NAME            # recorded state: $STATE_DIR/NAME.json
-    Fix the cause and re-run the module: ./bootstrap.sh --only NAME
-    (or resume the sequence: ./bootstrap.sh --from NAME). Finished items are skipped.
+      fluxion status  -c FILE --profile ${STATE_PREFIX}NAME --failed
+      fluxion explain -c FILE --profile ${STATE_PREFIX}NAME --phase PHASE
+      fluxion state show ${STATE_PREFIX}NAME            # recorded state: $STATE_DIR/${STATE_PREFIX}NAME.json
+    Fix the cause and re-run the module: ./bootstrap.sh ${RERUN_FLAG}--only NAME
+    (or resume the sequence: ./bootstrap.sh ${RERUN_FLAG}--from NAME). Finished items are skipped.
 EOF
     exit 1
 fi

@@ -1,0 +1,72 @@
+# dotbot-go (v0.4.2) config: links the SHARED dotfiles from the live clone of the original repo.
+#
+#   base directory (-d) = ~/.system-bootstrap/.files     (clone of github.com/w0rxbend/system-bootstrap)
+#   this file           = ~/.zorin-bootstrap/dotfiles/system-bootstrap.conf.yaml
+#
+# The clone is the source of truth: edit ~/.config/... (the links point into the clone), then commit and
+# push from ~/.system-bootstrap. Nothing here is copied into ~/.zorin-bootstrap.
+# Run by scripts/dotfiles-link.sh (profiles/80-dotfiles.yaml, `just dotfiles`), which backs up any real file
+# or directory at a link target into ~/.zorin-bootstrap-backup/ before dotbot replaces it (force: true).
+#
+# Deliberately NOT linked from the clone:
+#   - niri.conf.yaml and everything it links (.config/niri, DankMaterialShell, danksearch,
+#     environment.d/90-dms.conf, mimeapps.list, xdg-terminals.list with Alacritty): niri/DMS desktop only
+#   - arch/ and fedora/ (their install.conf.yaml and *-system-update.sh): OS-specific
+#   - .config/vesktop/vencord-settings-backup.json: a backup you import by hand in Vencord
+#   - .config/binstaller/config.yaml and .config/nerd-fonts-installer/config.yaml: fluxion applies the
+#     Zorin copies in ~/.zorin-bootstrap/config/, so those are linked by dotfiles/install.conf.yaml instead
+# Zorin-only files (system-update script, kitty terminal lists, session env, ~/.custom.zsh overlay, agent
+# skills) are linked by dotfiles/install.conf.yaml from this repo.
+
+- defaults:
+    link:
+      relink: true
+      create: true
+      force: true
+
+- clean: ["~"]
+
+- clean:
+    ~/.config:
+      recursive: true
+
+# Explicit modes: dotbot-go v0.4.2 creates missing directories as 0777 otherwise.
+- create:
+    ~/Downloads: {mode: 0755}
+    ~/.vim/undo-history: {mode: 0700}
+    ~/.local/share/gnome-background-properties: {mode: 0755}
+
+- shell:
+    - command -v conda >/dev/null 2>&1 && conda config --set changeps1 False || true
+
+- link:
+    ~/.zshrc: .zshrc
+    ~/.tmux.conf: .tmux.conf
+    ~/.ideavimrc: .ideavimrc
+    ~/.wezterm.lua: .wezterm.lua
+    ~/.hidden: .hidden
+    ~/.config/starship.toml: starship.toml
+    ~/.config/alacritty/alacritty.toml: alacritty.toml
+    ~/.config/alacritty/theme.toml: alacritty_theme.toml
+    ~/.config/kitty/kitty.conf: kitty.conf
+    ~/.config/nvim: nvim
+    ~/.config/btop: .config/btop
+    ~/.config/ghostty: .config/ghostty
+    ~/.config/zathura/zathurarc: zathurarc
+    ~/.config/zellij/config.kdl: .config/zellij/config.kdl
+    ~/.config/zellij/layouts/default.kdl: .config/zellij/layouts/default.kdl
+    ~/.config/zellij/layouts/editor.kdl: .config/zellij/layouts/editor.kdl
+    ~/.config/zellij/layouts/media.kdl: .config/zellij/layouts/media.kdl
+    ~/.config/lazygit/config.yml: .config/lazygit/config.yml
+    ~/.config/lsd/config.yaml: .config/lsd/config.yaml
+    ~/.config/lsd/colors.yaml: .config/lsd/colors.yaml
+    ~/.config/yazi/yazi.toml: .config/yazi/yazi.toml
+    ~/.config/yazi/theme.toml: .config/yazi/theme.toml
+    ~/.config/yazi/keymap.toml: .config/yazi/keymap.toml
+    ~/.config/bottom/bottom.toml: .config/bottom/bottom.toml
+    # PaperWM settings (a `dconf dump` of /org/gnome/shell/extensions/paperwm/). Only linked when the
+    # PaperWM extension is installed; load it with:
+    #   dconf load /org/gnome/shell/extensions/paperwm/ < ~/.config/paperwm/paperwm.conf
+    ~/.config/paperwm/paperwm.conf:
+      path: paperwm.conf
+      if: 'test -d "$HOME/.local/share/gnome-shell/extensions/paperwm@paperwm.github.com" || test -d /usr/share/gnome-shell/extensions/paperwm@paperwm.github.com'

@@ -1,16 +1,25 @@
-# 80-dotfiles — link the dotfiles with dotbot, install tmux plugins, set up the broot launcher.
+# 80-dotfiles - clone/update the live dotfiles repo, link the dotfiles with dotbot, install tmux plugins,
+# set up the broot launcher.
 #
 # Run alone:   ./bootstrap.sh --only dotfiles      (or: just dotfiles)
 #
+# Where the dotfiles come from:
+#   - github.com/w0rxbend/system-bootstrap is the source of truth. It is cloned over https to ~/.system-bootstrap
+#     (pushurl = SSH), and an existing clone is only ever fast-forwarded (scripts/system-bootstrap-sync.sh).
+#   - dotfiles/system-bootstrap.conf.yaml links the shared files from ~/.system-bootstrap/.files (no copies here).
+#   - dotfiles/install.conf.yaml links the Zorin-only files kept in this repo (system-update script, kitty
+#     terminal lists, session env, the ~/.custom.zsh overlay, agent skills).
+#   - scripts/dotfiles-link.sh backs up every real file/dir at a link target to ~/.zorin-bootstrap-backup/
+#     (same relative path) and then runs dotbot once per config.
+#
 # Caveats:
 # - fluxion 0.3.1's `dotfiles-apply` kind is broken (it passes `--config`, dotbot-go v0.4.2 only
-#   accepts `-c/--config-file`), so dotbot is run from a `shell-scripts` step instead.
-# - The phase fingerprint covers the inline script only, NOT dotfiles/install.conf.yaml. After editing
-#   install.conf.yaml, re-link with `just dotfiles` (dotbot is idempotent, re-running is safe).
-# - dotbot runs with force: true, so pre-existing files/dirs at link targets (e.g. the oh-my-zsh
-#   template ~/.zshrc, an empty ~/.config/ghostty/) are replaced by symlinks into this repo.
+#   accepts `-c/--config-file`) and takes a single config, so dotbot is run from `shell-scripts` steps.
+# - The probes (`--check` modes of the two scripts) decide whether a re-run does anything: the clone step
+#   re-runs when the remote has new commits, the link step when any link is missing or wrong.
+# - dotbot runs with force: true, but only after the backup, so nothing in $HOME is lost.
 # - This profile runs late on purpose: installers that append to ~/.zshrc (sdkman, juliaup, pnpm, ...)
-#   have already run and edited the throwaway template, not the repo's dotfiles/.zshrc.
+#   have already run and edited the throwaway template, not the linked file in ~/.system-bootstrap.
 apiVersion: initkit.io/v1alpha1
 kind: WorkstationProfile
 metadata:
@@ -27,12 +36,31 @@ spec:
         - name: dotfiles-host-check
           kind: assert
           spec:
-            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
-            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release && command -v git >/dev/null && python3 -c 'import yaml'"
+            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble and needs git + python3-yaml (00-base)"
+
+    - name: system-bootstrap-clone
+      description: "Clone github.com/w0rxbend/system-bootstrap to ~/.system-bootstrap (https), else fast-forward only"
+      dependsOn: [host-check]
+      execution: { continueOnError: false }
+      steps:
+        - name: dotfiles-system-bootstrap-clone
+          kind: shell-scripts
+          spec:
+            shell: bash
+            scripts:
+              - name: system-bootstrap-sync
+                content: |
+                  set -euo pipefail
+                  exec bash "$1/scripts/system-bootstrap-sync.sh"
+                args: ["${repoDir}"]
+                timeout: 10m
+            # Satisfied when the clone exists and already contains the remote HEAD (read-only ls-remote).
+            probeCommand: '"$HOME/.zorin-bootstrap/scripts/system-bootstrap-sync.sh" --check'
 
     - name: dotbot
-      description: "Symlink dotfiles/ into $HOME with dotbot-go (workaround for the broken dotfiles-apply kind)"
-      dependsOn: [host-check]
+      description: "Back up what is in the way, then link ~/.system-bootstrap/.files and dotfiles/ with dotbot-go"
+      dependsOn: [system-bootstrap-clone]
       execution: { continueOnError: false }
       steps:
         - name: dotbot-apply
@@ -41,22 +69,14 @@ spec:
             shell: bash
             scripts:
               - name: dotbot-apply
-                # Resolution order: dotbot on PATH -> binstaller copy in ~/.apps -> fluxion's verified
-                # pinned download (v0.4.2) in ~/.cache/fluxion/tools. No probe: dotbot is idempotent.
+                # dotbot resolution: $DOTBOT_BIN -> PATH -> binstaller copy in ~/.apps -> fluxion's verified
+                # pinned download (v0.4.2) in ~/.cache/fluxion/tools.
                 content: |
                   set -euo pipefail
-                  if command -v dotbot >/dev/null 2>&1; then
-                    bin="$(command -v dotbot)"
-                  elif [ -x "$HOME/.apps/dotbot/bin/dotbot" ]; then
-                    bin="$HOME/.apps/dotbot/bin/dotbot"
-                  else
-                    fluxion tools install dotbot >/dev/null
-                    bin="$HOME/.cache/fluxion/tools/dotbot/v0.4.2/dotbot"
-                  fi
-                  "$bin" --version || true
-                  exec "$bin" -d "$1" -c "$1/install.conf.yaml"
-                args: ["${repoDir}/dotfiles"]
+                  exec bash "$1/scripts/dotfiles-link.sh"
+                args: ["${repoDir}"]
                 timeout: 10m
+            probeCommand: '"$HOME/.zorin-bootstrap/scripts/dotfiles-link.sh" --check'
 
     - name: tmux-plugins
       description: "Install tmux plugins declared in ~/.tmux.conf via TPM (tmux from base, TPM from shell)"
@@ -74,7 +94,7 @@ spec:
             probeCommand: "test -d $HOME/.tmux/plugins/tmux-sensible"
 
     - name: broot-launcher
-      description: "Write the broot `br` shell function (sourced, guarded, by .zshrc); no rc-file edits"
+      description: "Write the broot `br` shell function (sourced by .zshrc); no rc-file edits"
       dependsOn: [host-check]
       execution: { continueOnError: true }
       steps:

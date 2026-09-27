@@ -33,6 +33,7 @@ known_hosts
 /plan*.json
 /import-*.yaml
 
-# nvim runtime state if it ever lands in the linked config dir
-dotfiles/nvim/.luarc.json
-dotfiles/nvim/spell/*.spl
+# Test harness output: generated test profiles (derived from profiles/, regenerated before every use by
+# tests/gen-test-profiles.sh) and run logs.
+/tests/generated/
+/tests/logs/

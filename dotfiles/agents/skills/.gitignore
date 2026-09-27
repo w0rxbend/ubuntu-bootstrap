@@ -1,0 +1,3 @@
+# ~/.claude/skills points here, and Claude Code keeps its claude.ai-synced skills in ~/.claude/skills/synced/.
+# That is a cache Claude Code manages itself; it is not part of this repo.
+/synced/
