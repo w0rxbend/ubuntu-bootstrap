@@ -46,7 +46,7 @@ OPTIONAL_PROFILES=(
 FLUXION_VERSION="${FLUXION_VERSION:-v0.3.1}"
 FLUXION_INSTALL_URL="https://worxbend.github.io/fluxion.cr/install.sh"
 EXPECTED_REPO_DIR="$HOME/.zorin-bootstrap"
-STATE_DIR="$HOME/.local/share/fluxion/state"
+STATE_DIR="$HOME/.local/share/fluxion"
 EXIT_CHECKPOINT=75
 EXIT_INTERRUPTED=130
 
@@ -592,7 +592,7 @@ if [[ $FAILED -gt 0 ]]; then
     cat >&2 <<EOF
       fluxion status  -c FILE --profile ${STATE_PREFIX}NAME --failed
       fluxion explain -c FILE --profile ${STATE_PREFIX}NAME --phase PHASE
-      fluxion state show ${STATE_PREFIX}NAME            # recorded state: $STATE_DIR/${STATE_PREFIX}NAME.json
+      fluxion state show ${STATE_PREFIX}NAME            # recorded state: $STATE_DIR/${STATE_PREFIX}NAME.state.json
     Fix the cause and re-run the module: ./bootstrap.sh ${RERUN_FLAG}--only NAME
     (or resume the sequence: ./bootstrap.sh ${RERUN_FLAG}--from NAME). Finished items are skipped.
 EOF

@@ -10,7 +10,8 @@ Usage: profile_query.py PROFILE QUERY
   sdkman         one candidate per line (sdkman-packages)
   pipx           one package per line (tool-packages with backend pipx)
   probeless      item keys that run on every --re-probe by design: `assert` steps (a check, not a change)
-                 and the pre-install `actions` of package steps (e.g. apt `update`, shown as action[N])
+                 and the pre-install `actions` of package steps without a step-level probeCommand
+                 (e.g. apt `update`, shown as action[N])
 """
 
 import os
@@ -69,8 +70,10 @@ def main(path, query):
         elif query == "probeless":
             if kind == "assert":
                 out.append(step.get("name", ""))
-            for i, _ in enumerate(spec.get("actions") or []):
-                out.append(f"action[{i}]")
+            # A step-level probeCommand gates the actions, so they must be skipped on a re-probe too.
+            if not spec.get("probeCommand"):
+                for i, _ in enumerate(spec.get("actions") or []):
+                    out.append(f"action[{i}]")
         elif query == "sdkman" and kind == "sdkman-packages":
             out += names(spec.get("packages"), key="candidate")
     seen = set()

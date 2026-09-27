@@ -102,6 +102,10 @@ spec:
         - name: base-core-packages
           kind: apt-packages
           spec:
+            # The step-level probeCommand only gates the pre-install actions (the packages themselves use the
+            # built-in dpkg probe): skip `apt-get update` when one succeeded in the last 6 h. The stamp is touched
+            # by /etc/apt/apt.conf.d/15update-stamp after every successful update.
+            probeCommand: "test -n \"$(find /var/lib/apt/periodic/update-success-stamp -mmin -360 2>/dev/null)\""
             actions: [update]
             packages:
               - ca-certificates
@@ -459,5 +463,4 @@ spec:
           spec:
             ntp: true
             localRtc: false
-            # fluxion has no built-in probe for system-setting items; without this a --re-probe run sets both again.
-            probeCommand: "timedatectl show -p NTP --value | grep -qx yes && timedatectl show -p LocalRTC --value | grep -qx no"
+            # No probeCommand: fluxion probes system-setting items itself (timedatectl show -p NTP|LocalRTC).
