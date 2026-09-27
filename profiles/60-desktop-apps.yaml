@@ -76,7 +76,7 @@ spec:
             apps:
               - com.discordapp.Discord
               - org.zulip.Zulip
-              - dev.vencord.Vesktop        # user install on this host
+              - dev.vencord.Vesktop        # hand-installed on this host (system scope)
 
     - name: flatpak-media
       dependsOn: [host-check, flathub]
@@ -167,8 +167,8 @@ spec:
               - org.gnome.design.Emblem
               - org.mozilla.vpn
               - io.github.zingytomato.netpeek
-              - org.gnome.Boxes             # user install on this host
-              - it.mijorus.gearlever        # user install on this host (AppImage manager)
+              - org.gnome.Boxes             # hand-installed on this host (system scope)
+              - it.mijorus.gearlever        # hand-installed on this host (system scope; AppImage manager)
 
     - name: flatpak-productivity
       dependsOn: [host-check, flathub]
