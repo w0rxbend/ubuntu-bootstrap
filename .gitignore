@@ -38,3 +38,6 @@ known_hosts
 /tests/generated/
 /tests/logs/
 __pycache__/
+
+# Machine-local pointer to the fluxion build to run (scripts/lib/fluxion-bin.sh, `just use-fluxion PATH`)
+/fluxion-bin.local

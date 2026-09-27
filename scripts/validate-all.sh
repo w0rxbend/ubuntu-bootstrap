@@ -11,7 +11,7 @@
 #
 #   scripts/validate-all.sh            # everything
 #   scripts/validate-all.sh -q         # only the summary and failures (lint output hidden)
-# Environment: FLUXION_BIN (default: fluxion on PATH).
+# Environment: FLUXION_BIN (default: scripts/lib/fluxion-bin.sh: fluxion-bin.local, else fluxion on PATH).
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
@@ -34,7 +34,10 @@ esac
 # Same PATH as bootstrap.sh, so profiles resolve identically.
 export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.go/bin:$HOME/.go-workspace/bin:$HOME/.apps/dotbot/bin:$HOME/.apps/neovim/bin:$HOME/.apps/yq/bin:$HOME/.apps/helm/bin:$HOME/.apps/kustomize/bin:$HOME/.local/share/pnpm/bin:$HOME/.juliaup/bin:$PATH"
 
-FLUXION_BIN="${FLUXION_BIN:-$(command -v fluxion || true)}"
+# shellcheck source=scripts/lib/fluxion-bin.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/fluxion-bin.sh"
+fluxion_resolve "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+FLUXION_BIN="$FLUXION_RESOLVED"
 if [[ -z "$FLUXION_BIN" || ! -x "$FLUXION_BIN" ]]; then
     echo "fluxion is not installed; run ./bootstrap.sh --validate (it installs fluxion) or see README.md" >&2
     exit 1

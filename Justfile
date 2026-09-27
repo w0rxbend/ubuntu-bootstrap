@@ -11,6 +11,10 @@ home := env_var("HOME")
 
 export PATH := home + "/.cargo/bin:" + home + "/.local/bin:" + home + "/.go/bin:" + home + "/.go-workspace/bin:" + home + "/.apps/dotbot/bin:" + home + "/.apps/neovim/bin:" + home + "/.apps/yq/bin:" + home + "/.apps/helm/bin:" + home + "/.apps/kustomize/bin:" + home + "/.local/share/pnpm/bin:" + home + "/.juliaup/bin:" + env_var("PATH")
 
+# The fluxion build every recipe runs: the same resolver as bootstrap.sh and tests/run-tests.sh
+# ($FLUXION_BIN, else fluxion-bin.local, else fluxion on PATH).
+fluxion := `bash -c 'source scripts/lib/fluxion-bin.sh; fluxion_resolve .; printf %s "${FLUXION_RESOLVED:-fluxion}"'`
+
 # List available recipes
 default:
     @just --list --unsorted
@@ -61,11 +65,17 @@ failed NAMES="":
 
 # Print the recorded fluxion state of a module
 state NAME:
-    fluxion state show {{ NAME }}
+    {{ fluxion }} state show {{ NAME }}
+
+# Point every script at a fluxion build (writes the git-ignored fluxion-bin.local) and check it has the fixes
+use-fluxion PATH:
+    test -x "{{ PATH }}" || { echo "{{ PATH }} is not an executable file" >&2; exit 1; }
+    printf '# fluxion build this repo runs (scripts/lib/fluxion-bin.sh; git-ignored, machine-local)\n%s\n' "$(readlink -f "{{ PATH }}")" > fluxion-bin.local
+    bash -c 'source scripts/lib/fluxion-bin.sh; FLUXION_BIN= fluxion_resolve .; echo "fluxion: $FLUXION_RESOLVED"; why="$(fluxion_check_capable "$FLUXION_RESOLVED")" && echo "has the fix/zorin-bootstrap fixes" || { echo "warning: $why" >&2; }'
 
 # Forget everything fluxion recorded for a module (next run re-probes and re-runs it)
 state-reset NAME:
-    fluxion state reset {{ NAME }} --force
+    {{ fluxion }} state reset {{ NAME }} --force
 
 # --- Dotfiles and skills --------------------------------------------------------------------
 
@@ -117,11 +127,11 @@ update:
 
 # Re-download the ~/.apps binaries with binstaller (after a version bump in config/binstaller.yaml)
 refresh-binaries:
-    fluxion apply -c profiles/40-binaries.yaml --profile binaries --phase binstaller --no-tui
+    {{ fluxion }} apply -c profiles/40-binaries.yaml --profile binaries --phase binstaller --no-tui
 
 # Re-run all four Nerd Font batches (e.g. after adding families; the fc-list probes would skip them)
 refresh-fonts:
-    fluxion apply -c profiles/40-binaries.yaml --profile binaries --phase fonts-core,fonts-more,fonts-rest,fonts-noto --no-tui
+    {{ fluxion }} apply -c profiles/40-binaries.yaml --profile binaries --phase fonts-core,fonts-more,fonts-rest,fonts-noto --no-tui
 
 # --- Modules with their own recipe --------------------------------------------------------
 

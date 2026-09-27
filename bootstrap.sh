@@ -52,6 +52,8 @@ EXIT_INTERRUPTED=130
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 TEST_PROFILES_DIR="tests/generated"
+# shellcheck source=scripts/lib/fluxion-bin.sh
+source "$REPO_DIR/scripts/lib/fluxion-bin.sh"
 
 # --------------------------------------------------------------------------------------------
 # Output helpers
@@ -111,8 +113,11 @@ Pass-through to fluxion apply/dry-run:
   -h, --help         this help
 
 Environment:
-  FLUXION_BIN        fluxion executable to use (default: fluxion on PATH, installed if missing)
-  FLUXION_VERSION    release to install when fluxion is missing (default: v0.3.1)
+  FLUXION_BIN        fluxion executable to use. Default: the path in fluxion-bin.local (git-ignored,
+                     written by 'just use-fluxion PATH'), else fluxion on PATH, else the release is installed.
+                     Resolved by scripts/lib/fluxion-bin.sh, the same resolver tests/run-tests.sh uses.
+  FLUXION_VERSION    release to install when no fluxion is found (default: v0.3.1)
+  FLUXION_ALLOW_UNPATCHED=1  apply with a fluxion that lacks the $FLUXION_REQUIRED_BRANCH fixes (warn only)
 
 Default sequence: $(default_names | tr '\n' ' ')
 Optional modules: $(optional_names | tr '\n' ' ')
@@ -340,23 +345,35 @@ fi
 # its backends (cargo-binstall, pipx, ...) on this PATH. Export everything the modules install.
 export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.go/bin:$HOME/.go-workspace/bin:$HOME/.apps/dotbot/bin:$HOME/.apps/neovim/bin:$HOME/.apps/yq/bin:$HOME/.apps/helm/bin:$HOME/.apps/kustomize/bin:$HOME/.local/share/pnpm/bin:$HOME/.juliaup/bin:$PATH"
 
-if [[ -n "${FLUXION_BIN:-}" ]]; then
-    [[ -x "$FLUXION_BIN" ]] || die "FLUXION_BIN=$FLUXION_BIN is not an executable file"
+fluxion_resolve "$REPO_DIR"
+FLUXION_BIN="$FLUXION_RESOLVED"
+if [[ -n "$FLUXION_BIN" ]]; then
+    [[ -x "$FLUXION_BIN" ]] || die "fluxion '$FLUXION_BIN' (from $FLUXION_BIN_SOURCE) is not an executable file"
 else
-    if ! command -v fluxion >/dev/null 2>&1; then
-        command -v curl >/dev/null 2>&1 || die "curl is required to install fluxion: sudo apt install -y curl"
-        command -v tar >/dev/null 2>&1 || die "tar is required to install fluxion"
-        info "fluxion not found; installing $FLUXION_VERSION to ~/.local/bin"
-        curl --proto '=https' --tlsv1.2 -sSfL "$FLUXION_INSTALL_URL" | sh -s -- --version "$FLUXION_VERSION"
-        hash -r
-        command -v fluxion >/dev/null 2>&1 || die "fluxion install failed (expected ~/.local/bin/fluxion)"
-    fi
+    command -v curl >/dev/null 2>&1 || die "curl is required to install fluxion: sudo apt install -y curl"
+    command -v tar >/dev/null 2>&1 || die "tar is required to install fluxion"
+    info "fluxion not found; installing $FLUXION_VERSION to ~/.local/bin"
+    curl --proto '=https' --tlsv1.2 -sSfL "$FLUXION_INSTALL_URL" | sh -s -- --version "$FLUXION_VERSION"
+    hash -r
+    command -v fluxion >/dev/null 2>&1 || die "fluxion install failed (expected ~/.local/bin/fluxion)"
     FLUXION_BIN="$(command -v fluxion)"
+    FLUXION_BIN_SOURCE=installed
 fi
 # Scripts the profiles run (dotfiles-link.sh's dotbot fallback) use the same binary.
 export FLUXION_BIN
 FLUXION_VER_STR="$("$FLUXION_BIN" --version 2>/dev/null || echo 'fluxion ?')"
-info "using $FLUXION_VER_STR ($FLUXION_BIN)"
+info "using $FLUXION_VER_STR ($FLUXION_BIN, from $FLUXION_BIN_SOURCE)"
+# The released 0.3.1 and the patched build print the same version, so check what the build can do. Applying
+# with a build that lacks the fixes fails binaries (zig), re-runs every apt package and loops at the logout
+# checkpoint; read-only modes only warn.
+if ! capable_why="$(fluxion_check_capable "$FLUXION_BIN")"; then
+    if [[ "$MODE" == apply && "${FLUXION_ALLOW_UNPATCHED:-0}" != 1 ]]; then
+        err "$capable_why"
+        fluxion_help_capable >&2
+        exit 1
+    fi
+    warn "$capable_why"
+fi
 if [[ -n "$PROFILES_DIR" ]]; then
     info "profiles from $(display_path "$PROFILES_DIR"); state names: ${STATE_PREFIX}NAME"
 elif [[ -n "$STATE_PREFIX" ]]; then
@@ -409,6 +426,7 @@ RESULT_CODES=()
 RESULT_NOTES=()
 RESULT_SECS=()
 FAILED=0
+FIRST_FAILED_DEFAULT=''
 CHECKPOINT=''
 
 record() {
@@ -553,6 +571,9 @@ for e in "${SELECTED[@]}"; do
             ;;
         *)
             FAILED=$((FAILED + 1))
+            if [[ -z "$FIRST_FAILED_DEFAULT" ]] && is_default "$(entry_name "$e")"; then
+                FIRST_FAILED_DEFAULT="$(entry_name "$e")"
+            fi
             if [[ "$MODE" == apply || "$MODE" == dry-run ]]; then
                 warn "$(entry_name "$e") failed (rc=$LAST_RC); continuing with the next module."
             fi
@@ -599,8 +620,12 @@ if [[ $FAILED -gt 0 ]]; then
       fluxion explain -c FILE --profile ${STATE_PREFIX}NAME --phase PHASE
       fluxion state show ${STATE_PREFIX}NAME            # recorded state: $STATE_DIR/${STATE_PREFIX}NAME.state.json
     Fix the cause and re-run the module: ./bootstrap.sh ${RERUN_FLAG}--only NAME
-    (or resume the sequence: ./bootstrap.sh ${RERUN_FLAG}--from NAME). Finished items are skipped.
 EOF
+    # --from only takes a module of the default sequence; name the first one that failed.
+    if [[ -n "$FIRST_FAILED_DEFAULT" ]]; then
+        printf '    or resume the default sequence there: ./bootstrap.sh %s--from %s\n' "$RERUN_FLAG" "$FIRST_FAILED_DEFAULT" >&2
+    fi
+    printf '    Finished items are skipped.\n' >&2
     exit 1
 fi
 
