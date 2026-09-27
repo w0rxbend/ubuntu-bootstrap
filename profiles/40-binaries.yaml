@@ -23,7 +23,7 @@
 #   release: binstaller v0.5.0, nerd-fonts-installer v1.0.7).
 #   binstaller must be >= v0.3.0: v0.2.0 (the pin of fluxion 0.3.1 as released) cannot read GNU
 #   @LongLink tar headers and fails on zig-x86_64-linux-0.15.2.tar.xz. The patched fluxion build
-#   (fluxion.cr branch fix/zorin-bootstrap) pins v0.5.0; with a stock 0.3.1 only zig fails.
+#   (fluxion.cr branch fix/zorin-bootstrap) pins v0.5.0; bootstrap.sh refuses to apply with a lower pin.
 # - binstaller runs in `mode: developer`: tools resolved via `latest-url` have no
 #   pinned checksum. Sudo symlinks are disabled in the binstaller config; the
 #   root links are made by the `neovim-system-links` phase below instead

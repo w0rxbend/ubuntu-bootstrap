@@ -3,7 +3,8 @@
 # Final session-level changes; always the LAST module of ./bootstrap.sh:
 #   - login shell -> /usr/bin/zsh (already zsh on this host, so the typed probe skips it)
 #   - add the user to the docker, libvirt and kvm groups
-#   - prompt-logout: the run stops here (exit 75) and asks you to log out and back in
+#   - prompt-logout: when this phase changed something (first run), the run stops here (exit 75) and asks
+#     you to log out and back in; a converged run (nothing to change, or --re-probe) carries on without asking
 #
 # Run alone:  ./bootstrap.sh --only session
 #

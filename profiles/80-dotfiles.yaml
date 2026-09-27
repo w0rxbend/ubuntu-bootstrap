@@ -15,8 +15,10 @@
 # Caveats:
 # - fluxion 0.3.1's `dotfiles-apply` kind is broken (it passes `--config`, dotbot-go v0.4.2 only
 #   accepts `-c/--config-file`) and takes a single config, so dotbot is run from `shell-scripts` steps.
-# - The probes (`--check` modes of the two scripts) decide whether a re-run does anything: the clone step
-#   re-runs when the remote has new commits, the link step when any link is missing or wrong.
+# - The probes (`--check` modes of the two scripts) decide whether a step runs the first time, and under
+#   --re-probe. Under --skip-already-installed (what bootstrap.sh passes) a recorded item is skipped from state:
+#   the clone is then only fast-forwarded by `just dotfiles-pull` or `--re-probe`, while the link step re-runs
+#   whenever its inputs change (the digest in its item name, see below).
 # - dotbot runs with force: true, but only after the backup, so nothing in $HOME is lost.
 # - This profile runs late on purpose: installers that append to ~/.zshrc (pnpm, codex, kimi, ...)
 #   have already run and edited the throwaway template, not the linked file in ~/.system-bootstrap.
@@ -30,6 +32,9 @@ spec:
     os: { distribution: ubuntu, codename: noble, release: "24.04" }
   vars:
     repoDir: ${HOME}/.zorin-bootstrap
+    # Digest of the dotbot inputs (both configs + scripts/dotfiles-link.sh), exported by bootstrap.sh. The
+    # environment wins over this fallback, which only applies to a direct `fluxion apply`.
+    ZB_DOTFILES_INPUTS: direct-run
   phases:
     - name: host-check
       steps:
@@ -68,7 +73,12 @@ spec:
           spec:
             shell: bash
             scripts:
-              - name: dotbot-apply
+              # The item name carries the digest of the dotbot inputs. fluxion skips a recorded item from state
+              # under --skip-already-installed and fingerprints this phase without looking at the dotbot
+              # configs, so with a fixed name an edited config was never linked by ./bootstrap.sh (only by
+              # `just dotfiles`). A changed digest is a new item: it is probed (links already right -> skip) and
+              # otherwise run. Unchanged inputs keep the recorded item, so a re-run changes nothing.
+              - name: dotbot-links-${ZB_DOTFILES_INPUTS}
                 # dotbot resolution: $DOTBOT_BIN -> PATH -> binstaller copy in ~/.apps -> fluxion's verified
                 # pinned download (v0.4.2) in ~/.cache/fluxion/tools.
                 content: |

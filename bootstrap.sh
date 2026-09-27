@@ -386,6 +386,12 @@ esac
 
 cd "$REPO_DIR"
 
+# The dotbot link step (profiles/80-dotfiles.yaml) names its item after this digest, so editing a dotbot config or
+# the link script makes ./bootstrap.sh re-link (fluxion would otherwise skip the recorded item from state).
+ZB_DOTFILES_INPUTS="$(cat dotfiles/install.conf.yaml dotfiles/system-bootstrap.conf.yaml scripts/dotfiles-link.sh |
+    sha256sum | cut -c1-12)"
+export ZB_DOTFILES_INPUTS
+
 # --------------------------------------------------------------------------------------------
 # sudo: authenticate once, keep the ticket warm (apply mode only)
 # --------------------------------------------------------------------------------------------
