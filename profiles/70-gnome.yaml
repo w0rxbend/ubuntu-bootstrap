@@ -8,8 +8,10 @@
 #   - Super+N switches to workspace N, Super+Shift+N moves the window to workspace N
 #     (GNOME's switch-to-application-N bindings are cleared so they do not clash)
 #   - Screenshot UI on Super+Print and Print
-#   - Dash/taskbar favourites as pinned on this host (Brave, Files, Software, Terminal, Vesktop,
-#     ChatGPT, Claude, Paseo); runs after apps (10) and desktop-apps (60), so the IDs exist
+#   - Dash/taskbar favourites as pinned on this host (Brave, Files, Software, Ghostty, Terminal, Telegram,
+#     Vesktop, ChatGPT, Claude, Paseo); runs after apps (10), shell (50, ghostty) and desktop-apps (60,
+#     telegram-desktop snap: the host pins the org.telegram.desktop flatpak, which the bootstrap replaces by the
+#     snap), so the IDs exist. Only written when Vesktop is not pinned yet, so later hand edits are kept.
 #
 # Run alone:  ./bootstrap.sh --only gnome
 #
@@ -78,6 +80,6 @@ spec:
           spec:
             commands:
               - name: favorite-apps
-                run: "gsettings set org.gnome.shell favorite-apps \"['brave-browser.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Software.desktop', 'org.gnome.Terminal.desktop', 'dev.vencord.Vesktop.desktop', 'chatgpt.desktop', 'com.anthropic.Claude.desktop', 'paseo.desktop']\""
+                run: "gsettings set org.gnome.shell favorite-apps \"['brave-browser.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Software.desktop', 'ghostty_ghostty.desktop', 'org.gnome.Terminal.desktop', 'telegram-desktop_telegram-desktop.desktop', 'dev.vencord.Vesktop.desktop', 'chatgpt.desktop', 'com.anthropic.Claude.desktop', 'paseo.desktop']\""
                 timeout: 1m
             probeCommand: "gsettings get org.gnome.shell favorite-apps | grep -q Vesktop"

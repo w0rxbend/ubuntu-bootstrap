@@ -13,6 +13,8 @@
 #   ASSERT_CONTEXT=host|container   container: skip checks that need systemd, snapd, flatpak or a GNOME session
 #   ASSERT_NETWORK=0                skip checks that need the network (docker pull, apt-get update, ls-remote)
 #   ASSERT_VERBOSE=1                print the command output of failed checks
+#   ASSERT_LIVE_INPUT=1             gnome: also press Super+3 / Super+1 through /dev/uinput (sudo) and check that
+#                                   mutter really switches workspace (off by default: it injects keys)
 
 ASSERT_REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)"
 ASSERT_CONTEXT="${ASSERT_CONTEXT:-host}"

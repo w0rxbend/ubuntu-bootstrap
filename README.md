@@ -437,9 +437,15 @@ Zorin OS 18 Pro, `hot-keys=true` by default) and of Zorin Taskbar is turned off,
 `tests/assertions/gnome.sh`) also scans every gsettings key for any other holder of those shortcuts. The module has to
 run inside the logged-in GNOME session and asserts that `DBUS_SESSION_BUS_ADDRESS` is set.
 
-It also sets the dash/taskbar favourites to what I pinned by hand: Brave, Files, Software, Terminal, Vesktop,
-ChatGPT, Claude and Paseo (`org.gnome.shell favorite-apps`). `gnome` runs after `apps` and `desktop-apps`, so those
-`.desktop` IDs exist by then.
+It also sets the dash/taskbar favourites to what I pinned by hand: Brave, Files, Software, Ghostty, Terminal,
+Telegram (the snap), Vesktop, ChatGPT, Claude and Paseo (`org.gnome.shell favorite-apps`). `gnome` runs after `apps`,
+`shell` and `desktop-apps`, so those `.desktop` IDs exist by then. The list is only written while Vesktop is not
+pinned yet, so pins changed by hand later are left alone.
+
+`tests/assertions/gnome.sh` also checks that the running mutter has 9 workspaces (`_NET_NUMBER_OF_DESKTOPS` on the
+Xwayland root window). With `ASSERT_LIVE_INPUT=1` it goes further: it presses `Super+3` and then `Super+1` through a
+temporary `/dev/uinput` keyboard (`tests/lib/uinput_keys.py`, needs `sudo -n`) and checks that the session really
+switched workspace. That check is off by default because it sends key presses to the desktop.
 
 ### `vicinae`
 
@@ -658,7 +664,8 @@ FLUXION_BIN=~/Projects/Github/fluxion.cr-zorin-fixes/bin/fluxion tests/run-tests
 
 - `FLUXION_BIN` defaults to the patched dev build `~/Projects/Github/fluxion.cr-zorin-fixes/bin/fluxion` when it
   exists, else the fluxion on PATH. `ASSERT_NETWORK=0` skips checks that need the network (`apt-get update`,
-  `docker run`, the clone's `ls-remote`).
+  `docker run`, the clone's `ls-remote`). `ASSERT_LIVE_INPUT=1` lets `gnome` press `Super+3`/`Super+1` for real
+  (see [`gnome`](#gnome)).
 - Logs, the per-stage `--report` files and `summary.tsv` go to `tests/logs/<timestamp>/` (git-ignored; `--log-dir`
   to change).
 - Each assertion file also runs on its own: `tests/assertions/vicinae.sh`.

@@ -18,6 +18,32 @@ _gnome_foreign_super_n() {
     }
 }
 
+# Current workspace index as mutter publishes it on the Xwayland root window (_NET_CURRENT_DESKTOP; unset until the
+# first switch of the session, which counts as 0).
+_gnome_current_ws() {
+    local v
+    v="$(xprop -root _NET_CURRENT_DESKTOP 2>/dev/null)" || return 1
+    [[ "$v" == *"= "* ]] && printf '%s\n' "${v##*= }" || printf '0\n'
+}
+
+# Presses Super+<to> through a uinput keyboard and checks the workspace mutter reports, then goes back to <back>.
+_gnome_live_super_n() {
+    local to="$1" back="$2" got
+    sudo -n python3 "$ASSERT_REPO_DIR/tests/lib/uinput_keys.py" "super+$to" || return 1
+    sleep 0.5
+    got="$(_gnome_current_ws)"
+    sudo -n python3 "$ASSERT_REPO_DIR/tests/lib/uinput_keys.py" "super+$back" || true
+    sleep 0.5
+    [[ "$got" == "$((to - 1))" ]] || {
+        echo "after Super+$to the current workspace index is '$got', expected $((to - 1))"
+        return 1
+    }
+    [[ "$(_gnome_current_ws)" == "$((back - 1))" ]] || {
+        echo "after Super+$back the current workspace index is '$(_gnome_current_ws)', expected $((back - 1))"
+        return 1
+    }
+}
+
 assert_gnome() {
     ASSERT_MODULE=gnome
     if ! has_gui; then
@@ -51,8 +77,23 @@ assert_gnome() {
 
     section "other settings"
     assert_gsetting org.gnome.shell.keybindings show-screenshot-ui "['<Super>Print', 'Print']"
-    check_sh "favourites include Vesktop, ChatGPT, Claude and Paseo" \
-        "f=\$(gsettings get org.gnome.shell favorite-apps); for a in dev.vencord.Vesktop.desktop chatgpt.desktop com.anthropic.Claude.desktop paseo.desktop; do grep -qF \"'\$a'\" <<<\"\$f\" || exit 1; done"
+    check_sh "favourites include Ghostty, Vesktop, ChatGPT, Claude and Paseo" \
+        "f=\$(gsettings get org.gnome.shell favorite-apps); for a in ghostty_ghostty.desktop dev.vencord.Vesktop.desktop chatgpt.desktop com.anthropic.Claude.desktop paseo.desktop; do grep -qF \"'\$a'\" <<<\"\$f\" || exit 1; done"
+    section "live session (mutter)"
+    if command -v xprop >/dev/null 2>&1 && [[ -n "${DISPLAY:-}" ]]; then
+        check_sh "mutter runs 9 workspaces (_NET_NUMBER_OF_DESKTOPS)" \
+            "xprop -root _NET_NUMBER_OF_DESKTOPS | grep -qE '= 9\$'"
+    else
+        skip "mutter workspace count" "no xprop or DISPLAY"
+    fi
+    # Opt-in: injects real key presses into the session (Super+3, then Super+1; ends on workspace 1).
+    if [[ "${ASSERT_LIVE_INPUT:-0}" != 1 ]]; then
+        skip "Super+N key presses switch workspace" "set ASSERT_LIVE_INPUT=1 (injects keys via /dev/uinput)"
+    elif ! can_sudo || [[ ! -e /dev/uinput ]] || ! command -v xprop >/dev/null 2>&1 || [[ -z "${DISPLAY:-}" ]]; then
+        skip "Super+N key presses switch workspace" "needs sudo -n, /dev/uinput, xprop and DISPLAY"
+    else
+        check "Super+3 switches to workspace 3, Super+1 back to 1 (real key presses)" _gnome_live_super_n 3 1
+    fi
 }
 
 assert_main assert_gnome
