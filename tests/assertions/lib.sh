@@ -148,6 +148,8 @@ assert_no_pkgs() {
 }
 
 # assert_flatpaks LABEL ID...
+# IDs may be apps or extensions (OBS plugins are runtime refs, com.obsproject.Studio.Plugin.*), so the list is
+# every installed ref, not just --app.
 assert_flatpaks() {
     local label="$1" id missing=()
     shift
@@ -156,7 +158,7 @@ assert_flatpaks() {
         return
     fi
     local installed
-    installed="$(flatpak list --app --columns=application 2>/dev/null)"
+    installed="$(flatpak list --columns=application 2>/dev/null)"
     for id in "$@"; do grep -qxF "$id" <<<"$installed" || missing+=("$id"); done
     if [[ ${#missing[@]} -eq 0 ]]; then
         _a_ok "$label: $# flatpak(s) installed"
