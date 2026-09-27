@@ -63,10 +63,10 @@ spec:
           spec:
             shell: bash
             # One probe for the two items below: nothing runs once v0.29.0 is installed.
-            # fluxion re-evaluates a step-level probe before EACH item, so an item that must run after
-            # the install (cache clean-up, server restart) cannot live in this step: once
-            # vicinae-install-root succeeds the probe is true and later items would be skipped
-            # (fluxion bug, reported upstream). It is the separate step vicinae-post-install below.
+            # A step's probeCommand answers for the whole step, once per apply (fluxion fix/zorin-bootstrap
+            # 9a77b8f; 0.3.1 re-ran it before every item and so skipped items after the install). Work that
+            # depends on what this step leaves behind (cache clean-up, server restart on upgrade) therefore
+            # needs its own step with its own probe: vicinae-post-install below.
             probeCommand: "/usr/local/bin/vicinae version 2>/dev/null | grep -q 'Version v0.29.0'"
             scripts:
               - name: vicinae-download
