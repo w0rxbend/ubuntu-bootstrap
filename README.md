@@ -1,7 +1,8 @@
 # zorin-bootstrap
 
 This repo sets up my workstation on **Zorin OS 18 Pro** (Ubuntu 24.04 "noble" base, GNOME, amd64) using
-[fluxion](https://worxbend.github.io/fluxion.cr/) 0.3.1.
+[fluxion](https://worxbend.github.io/fluxion.cr/) 0.3.1 **plus fixes that are not in a fluxion release yet** (fluxion.cr
+branch `fix/zorin-bootstrap`, see [fluxion.cr patches](#fluxioncr-patches)).
 
 It ports the Arch and Fedora scripts from
 [w0rxbend/system-bootstrap](https://github.com/w0rxbend/system-bootstrap) to declarative fluxion profiles. It also
@@ -25,6 +26,8 @@ A test harness runs the same orchestration on generated, non-halting copies of t
 ## Contents
 
 - [Quick start](#quick-start)
+- [First run on a fresh Zorin, step by step](#first-run-on-a-fresh-zorin-step-by-step)
+- [fluxion.cr patches](#fluxioncr-patches)
 - [How it works](#how-it-works)
 - [Layout](#layout)
 - [Modules](#modules)
@@ -50,29 +53,38 @@ A test harness runs the same orchestration on generated, non-halting copies of t
 Do this from the **local GNOME session**, in a terminal on the machine itself rather than over SSH. System flatpak
 installs are authorised by polkit only for the active local session, and `gsettings` needs the session bus.
 
+Prerequisites:
+
+- Zorin OS 18 (Core or Pro; any Ubuntu 24.04 "noble" base), amd64, a user with sudo rights, network access.
+- `git` and `curl` (a fresh Zorin 18 ships curl but not git).
+- **A fluxion build with the `fix/zorin-bootstrap` fixes** (see [fluxion.cr patches](#fluxioncr-patches)). fluxion
+  0.3.1 as released fails `binaries` (zig) and loops at the log-out checkpoint, and `bootstrap.sh` refuses to apply
+  with it. It reads the build's binstaller pin to tell the two apart, since both print `fluxion 0.3.1`.
+- About 10 GB of free disk and a couple of hours for the first run.
+
 ```bash
-# 1. prerequisites (a fresh Zorin 18 ships curl but not git)
+# 1. prerequisites
 sudo apt update && sudo apt install -y git curl
 
 # 2. clone to the expected path (the profiles hard-code repoDir=$HOME/.zorin-bootstrap)
 git clone <your-remote>/zorin-bootstrap.git ~/.zorin-bootstrap
 cd ~/.zorin-bootstrap
 
-# 3. install fluxion into ~/.local/bin (bootstrap.sh also does this if it is missing)
-curl --proto '=https' --tlsv1.2 -sSfL https://worxbend.github.io/fluxion.cr/install.sh | sh
-#    or pin the release this repo was tested with:
-curl --proto '=https' --tlsv1.2 -sSfL https://worxbend.github.io/fluxion.cr/install.sh | sh -s -- --version v0.3.1
+# 3. point the repo at the patched fluxion (built as in "fluxion.cr patches", or copied from another machine).
+#    fluxion-bin.local is git-ignored; bootstrap.sh, the tests and `just` all read it.
+echo /path/to/fluxion > fluxion-bin.local     # later: just use-fluxion /path/to/fluxion
 
-# 4. check the host is ready (read-only)
-fluxion doctor -c profiles/00-base.yaml
-
-# 5. see what would happen (read-only, no sudo)
+# 4. see what would happen (read-only, no sudo)
 ./bootstrap.sh --validate      # validate --strict + lint for every module
-./bootstrap.sh --plan          # execution plan per module (tree)
 ./bootstrap.sh --dry-run       # exact commands per module
 
-# 6. run it. sudo asks for your password once, and the script keeps the ticket warm
+# 5. run it. sudo asks for your password once, and the script keeps the ticket warm
 ./bootstrap.sh
+# ... it stops at the `session` log-out checkpoint (exit 0, summary says "checkpoint (log out/in)").
+
+# 6. log out and back in (or reboot), then finish:
+cd ~/.zorin-bootstrap && ./bootstrap.sh              # converged: every module skips, no second log-out prompt
+./bootstrap.sh --only post-checks                    # verification + reminders of the manual steps
 ```
 
 The `dotfiles` module clones [w0rxbend/system-bootstrap](https://github.com/w0rxbend/system-bootstrap) to
@@ -84,7 +96,8 @@ full-screen selector for each module. Add `--tui` to get the selector (press `en
 screen after the run). Pressing `q` **at the selector** skips that module, and fluxion still exits 0, so the
 summary reports it as `ok` even though nothing ran.
 
-`fluxion doctor` always prints `[warn] host os unrecognised: zorin`; that is expected (see the caveats table). On a
+`fluxion doctor -c profiles/00-base.yaml` (with the fluxion from `fluxion-bin.local`) checks the host read-only. It
+always prints `[warn] host os unrecognised: zorin`; that is expected (see the caveats table). On a
 fresh host `doctor` also fails `cargo-binstall command not found` for `30-toolchains.yaml` and `pipx command not
 found` for `optional/gnome-extensions.yaml`. Both are installed by an earlier phase/module of the same run
 (`rust` phase and `base`), so those two failures are expected before the first apply.
@@ -94,20 +107,25 @@ To apply a single module, or a single phase inside a module, without running eve
 ```bash
 ./bootstrap.sh --only docker                  # one module (wrapper: PATH, sudo keep-alive, summary)
 ./bootstrap.sh --only apps,docker             # several modules, in table order
-# one phase, directly with fluxion (keep the module's state name; run `sudo -v` first):
+# one phase, directly with fluxion (keep the module's state name; run `sudo -v` first; `fluxion` below means
+# the patched build from fluxion-bin.local, e.g. alias fluxion="$(grep -v '^#' ~/.zorin-bootstrap/fluxion-bin.local | head -n1)"):
 fluxion apply -c profiles/10-apps.yaml --profile apps --phase vscode --skip-already-installed
 fluxion list -c profiles/10-apps.yaml         # phase and step names of a module
 fluxion graph -c profiles/10-apps.yaml        # phase dependency graph (mermaid)
 ```
 
 The last module (`session`) changes your groups (`docker`, `libvirt`, `kvm`) and your login shell. It then stops with
-a **log-out checkpoint** (fluxion exit code 75; with fluxion 0.3.1 as released it exits 0 and repeats the notice on
-every run, see the caveats table). The re-login also loads the Vicinae GNOME Shell extension. Log out
+a **log-out checkpoint**: fluxion exits 75, `bootstrap.sh` stops there, prints what to do and exits 0. The phase is
+recorded as completed, so the next run does not ask again, and a run in which `session` changes nothing (a
+converged host, `--re-probe`) never asks at all. The re-login also loads the Vicinae GNOME Shell extension. Log out
 and back in, or reboot, then run:
 
 ```bash
 cd ~/.zorin-bootstrap && ./bootstrap.sh --only post-checks
 ```
+
+The full walk-through, including what to do when a module fails half-way, is
+[First run on a fresh Zorin](#first-run-on-a-fresh-zorin-step-by-step).
 
 A full run on a fresh install takes a while. The slow parts are TeX Live, around 55 flatpaks, SDKMAN candidates,
 Miniforge and the Nerd Fonts, which total about 1.5 GB. When a module fails, the script **carries on with the next
@@ -140,16 +158,21 @@ one** and prints a summary at the end. Fix whatever failed and re-run just that 
 | `--state-prefix P` | Prefixes the fluxion state names (`--test` uses `test-`) |
 | `--report FILE` | Appends one tab-separated line per module: name, rc, result, seconds and fluxion's `Summary:` counts (ok, failed, skipped, would run) |
 
-`FLUXION_BIN=/path/to/fluxion ./bootstrap.sh ...` uses that fluxion instead of the one on PATH (for example a patched
-build); the profiles' own scripts get the same binary through the exported variable.
+Which fluxion runs is decided in one place, `scripts/lib/fluxion-bin.sh`, shared by `bootstrap.sh`,
+`tests/run-tests.sh`, `scripts/validate-all.sh` and the `Justfile`: `$FLUXION_BIN` when set, else the path in the
+git-ignored `fluxion-bin.local` (`just use-fluxion PATH` writes it), else `fluxion` on PATH, else `bootstrap.sh`
+installs the fluxion release. So the binary the tests run is the binary a real bootstrap runs. The profiles' own
+scripts get the same binary through the exported `FLUXION_BIN`.
 
 Before any module runs, the script does these checks and setup steps:
 
 - It refuses to run as root.
 - It warns if the repo is not at `~/.zorin-bootstrap`, if you are connected over SSH, or if the host is not
   noble-based.
-- It uses `$FLUXION_BIN` when set, otherwise installs fluxion when it is missing, and warns if the version is not
-  0.3.1.
+- It resolves fluxion as above and prints which one and where it came from. In apply mode it **refuses a build
+  without the `fix/zorin-bootstrap` fixes** (it reads the binstaller pin from `fluxion tools list`: v0.3.0 or later
+  means the fixes are in; 0.3.1 as released pins v0.2.0) and says how to point the repo at a patched build.
+  `FLUXION_ALLOW_UNPATCHED=1` turns that into a warning; read-only modes only warn.
 - It exports a PATH that includes every tool location the modules create: `~/.cargo/bin`, `~/.local/bin`,
   `~/.go/bin`, `~/.apps/{dotbot,neovim,yq,helm,kustomize}/bin`, `~/.local/share/pnpm/bin` and juliaup.
 - It runs `sudo -v` once (skipped when `sudo -n true` already works, e.g. under NOPASSWD, where `sudo -v` can
@@ -172,6 +195,7 @@ The script never sees your password. `sudo` prompts for it directly, and fluxion
 | `just dry NAME` / `just plan NAME` | Dry-run or plan for one module |
 | `just status [a,b]` / `just failed [a,b]` | Live probe summary, or only the missing and failed items |
 | `just state NAME` / `just state-reset NAME` | Shows or deletes the fluxion state recorded for a module |
+| `just use-fluxion PATH` | Writes `fluxion-bin.local` (git-ignored) so every script runs that fluxion build, and checks it has the fixes |
 | `just dotfiles` / `just dotfiles-dry` / `just dotfiles-check` | `scripts/dotfiles-link.sh`: back up + re-link everything, preview, or verify every link |
 | `just dotfiles-pull` | `scripts/system-bootstrap-sync.sh`: clone `~/.system-bootstrap` or fast-forward it |
 | `just skills` | `scripts/link-skills.sh`: link every installed agent to the shared skills folder |
@@ -180,6 +204,103 @@ The script never sees your password. `sudo` prompts for it directly, and fluxion
 | `just update` | `~/system-update.sh` (apt, snap, flatpak, rustup, SDKMAN, nvm, ...) |
 | `just refresh-binaries` / `just refresh-fonts` | Re-runs the binstaller phase / the four Nerd Font phases without `--skip-already-installed` (see [Updating](#updating)) |
 | `just obs` / `pro-parity` / `gnome-extensions` / `wallpapers` / `post-checks` | The optional modules |
+
+---
+
+## First run on a fresh Zorin, step by step
+
+Everything below happens **in a terminal inside the logged-in GNOME session** on the machine itself (not over SSH):
+system flatpak installs are authorised by polkit only for the active local session, and `gsettings` needs the session
+bus.
+
+1. **Base tools and the repo.**
+
+   ```bash
+   sudo apt update && sudo apt install -y git curl
+   git clone <your-remote>/zorin-bootstrap.git ~/.zorin-bootstrap && cd ~/.zorin-bootstrap
+   ```
+
+2. **The patched fluxion.** Either copy a build from a machine that has one (it needs only libraries Zorin ships:
+   libyaml-0-2, libssl3, libpcre2-8-0, zlib1g):
+
+   ```bash
+   install -Dm755 /media/usb/fluxion ~/.local/opt/fluxion/fluxion
+   echo ~/.local/opt/fluxion/fluxion > ~/.zorin-bootstrap/fluxion-bin.local
+   ```
+
+   or build it from the `fix/zorin-bootstrap` branch (Crystal >= 1.21; pipe the Crystal installer to **bash**, not
+   zsh, see [Troubleshooting](#troubleshooting)). The branch is not published yet: push it to your fluxion.cr remote
+   from the machine that has it first, or use the copy above.
+
+   ```bash
+   curl -fsSL https://crystal-lang.org/install.sh | sudo bash
+   sudo apt install -y libyaml-dev libssl-dev libpcre2-dev zlib1g-dev
+   git clone -b fix/zorin-bootstrap <fluxion.cr remote> ~/Projects/fluxion.cr && cd ~/Projects/fluxion.cr
+   shards install && crystal build --release --no-debug src/main.cr -o bin/fluxion
+   echo ~/Projects/fluxion.cr/bin/fluxion > ~/.zorin-bootstrap/fluxion-bin.local && cd ~/.zorin-bootstrap
+   ```
+
+   `./bootstrap.sh --validate` then prints `using fluxion 0.3.1 (<path>, from fluxion-bin.local)`, and warns if the
+   build lacks the fixes.
+
+3. **Preview (optional, read-only):** `./bootstrap.sh --validate` and `./bootstrap.sh --dry-run`.
+
+4. **Run the default sequence:** `./bootstrap.sh`. sudo asks for your password once (skipped under NOPASSWD). The
+   eleven modules run in order; a failed module does not stop the others, and the summary at the end lists each
+   module's result. If one failed, read `./bootstrap.sh --failed --only NAME`, fix the cause, then either re-run it
+   (`./bootstrap.sh --only NAME`) or resume the sequence there (`./bootstrap.sh --from NAME`, which the failure
+   message names for you). Finished items are skipped from the recorded state, so re-running is cheap. Ctrl+C is
+   safe too: fluxion records where it stopped, and `./bootstrap.sh` (or `--from NAME`) carries on.
+
+5. **The log-out prompt.** The last module, `session`, sets zsh as your login shell and adds you to `docker`,
+   `libvirt` and `kvm`, then stops at the checkpoint: fluxion prints *Restart required*, the summary shows
+   `session ... 75 checkpoint (log out/in)`, and `bootstrap.sh` exits 0 with the next command to run. **Log out and
+   back in, or reboot.** That makes the groups and the login shell take effect and loads the Vicinae GNOME extension.
+
+6. **Resume after the re-login:**
+
+   ```bash
+   cd ~/.zorin-bootstrap
+   ./bootstrap.sh                      # optional: re-checks the whole sequence; everything is skipped, no new prompt
+   ./bootstrap.sh --only post-checks   # docker without sudo, zsh, fonts, nvim, CLIs, Vicinae server + extension
+   ```
+
+   `post-checks` also holds the reminders for the manual steps (gh login, SSH key, duplicate Telegram flatpak). It
+   exits 1 and names each one until you have done it; that is expected, see
+   [Manual steps after the bootstrap](#manual-steps-after-the-bootstrap).
+
+7. **Optional modules** when you want them: `./bootstrap.sh --only obs,wallpapers,gnome-extensions` (and
+   `zorin-pro-parity` on a Core install). Log out/in once more after `gnome-extensions`.
+
+8. **Verify (optional):** `tests/run-tests.sh` from the GNOME session runs the whole suite (apply + idempotency +
+   assertions on the test profiles, plus the production-only status); see [Testing](#testing).
+
+---
+
+## fluxion.cr patches
+
+This repo needs fluxion fixes that are **not in a fluxion release yet**. They are on branch **`fix/zorin-bootstrap`**
+of fluxion.cr (on top of `main`, which is 0.3.1). Until a release includes them, run a build of that branch (see
+[First run](#first-run-on-a-fresh-zorin-step-by-step)); `bootstrap.sh` refuses to apply with fluxion 0.3.1 as
+released. The check: `fluxion tools list` shows `binstaller v0.5.0` on a patched build and `v0.2.0` on 0.3.1.
+
+| Commit | Fix | Why this repo needs it |
+|---|---|---|
+| `d26a299`, `d6f0caf` | apt probe reads `dpkg-query` output correctly; a package held with `apt-mark hold` counts as installed | 0.3.1 probes every apt package as absent, so `status` is wrong and `--re-probe` reinstalls ~200 packages |
+| `49aae0a`, `95fe904` | one `apt-get install` per package list, one by one only on failure; not after Ctrl+C | a 200-package phase runs one transaction instead of 200 |
+| `4c30b6d`, `149f1d8` | `system-setting` items and asserts are answered by `status` | `base` clock settings and every `host-check` showed as unknown |
+| `af2c932` | an assert is checked on every run, never trusted from state | guards such as `gnome-session-check` and the post-checks re-run |
+| `f992d37`, `5d19083`, `c34113b`, `eded4b5` | apt sources must match the declared line and keyring; a keyring must hold the declared fingerprint; gpg keys are read with a throwaway gpg home (fresh accounts have no `~/.gnupg`) and an unusable TMPDIR fails one item instead of the run | `apps` (claude-desktop, VS Code, 1Password, Crystal keys) |
+| `9d7b731`, `16712e6`, `82f3e77` | cargo crates and SDKMAN candidates have live probes | `toolchains` idempotency under `--re-probe` |
+| `8065313`, `953e35e` | binstaller pinned to v0.5.0 (reads GNU `@LongLink` tar entries) | `binaries` fails on zig 0.15.2 otherwise |
+| `9a77b8f` | a step's `probeCommand` is settled once per step, not before each item | multi-script steps (`vicinae`) skipped their later scripts |
+| `4254ceb`, `d699c4a` | a `prompt-logout` phase is recorded as completed and exits 75, and only asks when it changed something | `session`: one log-out prompt, not one per run; `--re-probe` runs finish |
+| `7430ef4`, `7e01f16` | the flatpak probe sees extensions (runtime refs) | `obs` plugins read as absent after install |
+| `bdf915b` | `fluxion state forget` takes the profile as a positional argument | the documented `state forget` commands |
+| `241e8f1`, `0da747d` | code split under 500 lines per file; divergences from the Java spec recorded | upstream hygiene, no behaviour change |
+
+When a fluxion release contains these commits: set `FLUXION_VERSION` in `bootstrap.sh` to it, install it, and delete
+`fluxion-bin.local`.
 
 ---
 
@@ -216,7 +337,9 @@ Every profile begins with a `host-check` assert that the host is noble-based wit
 ├── Justfile                      # shortcuts (just is installed by `toolchains`)
 ├── bootstrap.sh                  # ordered runner: preflight, sudo keep-alive, summary (--test for the tests)
 ├── .gitignore  .editorconfig  .shellcheckrc
+├── fluxion-bin.local             # git-ignored: path of the patched fluxion build this machine runs
 ├── scripts/
+│   ├── lib/fluxion-bin.sh        # the one fluxion resolver + "has the fixes?" check (bootstrap, tests, just)
 │   ├── validate-all.sh           # validate --strict + lint (prod + test profiles), bash -n + shellcheck
 │   ├── system-bootstrap-sync.sh  # clone ~/.system-bootstrap (https) or fast-forward it; --check
 │   ├── dotfiles-link.sh          # back up what is in the way, run dotbot for both configs; --check/--dry-run
@@ -240,10 +363,10 @@ Every profile begins with a `host-check` assert that the host is noble-based wit
 │       ├── wallpapers.yaml
 │       └── post-checks.yaml
 ├── config/
-│   ├── binstaller.yaml           # binstaller profile (also linked to ~/.config/binstaller/config.yaml)
+│   ├── binstaller.yaml           # binstaller profile, a Zorin fork (also linked to ~/.config/binstaller/config.yaml)
 │   └── nerd-fonts/
-│       ├── all.yaml              # all 42 families (linked to ~/.config/nerd-fonts-installer/config.yaml)
-│       ├── 01-core.yaml  02-more.yaml  03-rest.yaml  04-noto.yaml   # batches fluxion uses
+│       ├── 01-core.yaml  02-more.yaml  03-rest.yaml  04-noto.yaml   # batches fluxion uses; together they
+│                                 # equal the clone's .config/nerd-fonts-installer/config.yaml (all 42 families)
 ├── dotfiles/                     # ONLY Zorin-specific files; shared dotfiles come from ~/.system-bootstrap
 │   ├── system-bootstrap.conf.yaml  # dotbot config, base dir ~/.system-bootstrap/.files (the live clone)
 │   ├── install.conf.yaml         # dotbot config, base dir dotfiles/ (the Zorin-only files below)
@@ -258,7 +381,8 @@ Every profile begins with a `host-check` assert that the host is noble-based wit
     ├── assertions/               # lib.sh + one <module>.sh per module (the real post-conditions)
     ├── container/Dockerfile      # "fresh Zorin" image for --container (ubuntu:24.04 + Zorin os-release)
     ├── container/zorin-baseline.txt  # what that image adds: Zorin-shipped CLI packages (+ git), delta documented
-    ├── lib/                      # generator, profile queries, inline-snippet extractor (python3 + PyYAML)
+    ├── lib/                      # generator, profile queries, inline-snippet extractor, dotfile-copy detector
+    │                             # (find_copies.py), uinput key presser (python3 + PyYAML)
     └── logs/                     # git-ignored run logs
 
 ~/.system-bootstrap/              # live clone of github.com/w0rxbend/system-bootstrap (source of truth)
@@ -377,10 +501,9 @@ See [Docker instead of podman](#docker-instead-of-podman).
   jujutsu v0.40.0, dotbot v0.4.2, and **yq** (mikefarah, newly added). Every tool gets its own
   `~/.apps/<tool>/bin`.
   **Needs binstaller >= v0.3.0.** fluxion 0.3.1 as released pins binstaller v0.2.0, and that version cannot read the
-  GNU `@LongLink` tar entries in `zig-x86_64-linux-0.15.2.tar.xz`, so the binstaller step fails on zig. Either run
-  with the patched build (`FLUXION_BIN=~/Projects/Github/fluxion.cr-zorin-fixes/bin/fluxion ./bootstrap.sh`, which
-  pins v0.5.0), or put binstaller v0.3.0 or later on PATH (fluxion uses a binstaller on PATH as it is). Keep
-  `installerVersion` out of the profile: fluxion only accepts its own pinned version.
+  GNU `@LongLink` tar entries in `zig-x86_64-linux-0.15.2.tar.xz`, so the binstaller step fails on zig. The patched
+  build ([fluxion.cr patches](#fluxioncr-patches)) pins v0.5.0, and `bootstrap.sh` refuses to apply with a lower pin.
+  Keep `installerVersion` out of the profile: fluxion only accepts its own pinned version.
 - **nvim system links**: `/usr/local/bin/{nvim,neovim,vim}` point to `~/.apps/neovim/bin/nvim`, so `sudo vim` also
   opens your Neovim. `/usr/bin` belongs to dpkg and is not touched. binstaller's own sudo symlinks are turned off.
 - **Nerd Fonts** (nerd-fonts-installer, `~/.local/share/fonts/NerdFonts`), installed in 4 batches because fluxion
@@ -507,8 +630,9 @@ copies: `dotfiles/` holds only what has no equivalent in the original repo.
 - when the clone exists, only **fast-forwards** it (`git fetch` + `git merge --ff-only`). Local commits, uncommitted
   edits, another branch, a detached HEAD or a diverged history are left alone with a warning; nothing is reset,
   stashed or overwritten. A path that is not a clone of that repo is an error and is not touched;
-- `--check` (the fluxion probe) passes when the clone already contains the remote `HEAD`, so a re-run only pulls when
-  GitHub has new commits.
+- `--check` (the fluxion probe) passes when the clone already contains the remote `HEAD`. It decides the first run
+  and `--re-probe` runs; after that `./bootstrap.sh` skips the recorded step, so update the clone with
+  `just dotfiles-pull`.
 
 ### The two dotbot configs
 
@@ -517,13 +641,14 @@ copy). `scripts/dotfiles-link.sh` runs it once per config, each with its own bas
 
 | Config (in this repo) | Base directory | Links |
 |---|---|---|
-| `dotfiles/system-bootstrap.conf.yaml` | `~/.system-bootstrap/.files` | `~/.zshrc`, `~/.tmux.conf`, `~/.ideavimrc`, `~/.wezterm.lua`, `~/.hidden`, `~/.config/{starship.toml, alacritty/{alacritty,theme}.toml, kitty/kitty.conf, nvim, btop, ghostty, zathura/zathurarc, zellij/{config.kdl, layouts/*}, lazygit, lsd, yazi, bottom}`; `~/.config/paperwm/paperwm.conf` **only when PaperWM is installed** |
-| `dotfiles/install.conf.yaml` | `~/.zorin-bootstrap/dotfiles` | `~/.custom.zsh`, `~/system-update.sh`, `~/.config/{,zorin-,GNOME-}xdg-terminals.list` (kitty), `~/.config/environment.d/90-session.conf`, `~/.config/binstaller/config.yaml` and `~/.config/nerd-fonts-installer/config.yaml` (the files fluxion applies, in `config/`), and the [agent skills](#agent-skills) links |
+| `dotfiles/system-bootstrap.conf.yaml` | `~/.system-bootstrap/.files` | `~/.zshrc`, `~/.tmux.conf`, `~/.ideavimrc`, `~/.wezterm.lua`, `~/.hidden`, `~/.config/{starship.toml, alacritty/{alacritty,theme}.toml, kitty/kitty.conf, nvim, btop, ghostty, zathura/zathurarc, zellij/{config.kdl, layouts/*}, lazygit, lsd, yazi, bottom, nerd-fonts-installer/config.yaml}`; `~/.config/paperwm/paperwm.conf` **only when PaperWM is installed** |
+| `dotfiles/install.conf.yaml` | `~/.zorin-bootstrap/dotfiles` | `~/.custom.zsh`, `~/system-update.sh`, `~/.config/{,zorin-,GNOME-}xdg-terminals.list` (kitty), `~/.config/environment.d/90-session.conf`, `~/.config/binstaller/config.yaml` (the Zorin fork fluxion applies, `config/binstaller.yaml`), and the [agent skills](#agent-skills) links |
 
 Deliberately not linked from the clone: `niri.conf.yaml` and everything it links (niri, DankMaterialShell,
 danksearch, `90-dms.conf`, `mimeapps.list`, its Alacritty `xdg-terminals.list`), `arch/` and `fedora/` (their
-`install.conf.yaml` and `*-system-update.sh`), the old binstaller/nerd-fonts configs (fluxion applies the Zorin ones in
-`config/`), and `vencord-settings-backup.json` (imported by hand). `paperwm.conf` is a `dconf dump`; after PaperWM
+`install.conf.yaml` and `*-system-update.sh`), the clone's binstaller config (`~/.config/binstaller/config.yaml` links
+the Zorin fork `config/binstaller.yaml` that fluxion applies; `tests/assertions/dotfiles.sh` reports any version pin
+that differs from the clone's), and `vencord-settings-backup.json` (imported by hand). `paperwm.conf` is a `dconf dump`; after PaperWM
 is installed and linked, load it with `dconf load /org/gnome/shell/extensions/paperwm/ < ~/.config/paperwm/paperwm.conf`.
 
 The link defaults are `relink: true, create: true, force: true`. Before dotbot runs, `dotfiles-link.sh` copies every
@@ -554,9 +679,15 @@ just dotfiles-check                      # every link resolves to its source?
 ```
 
 Zorin-only files (`dotfiles/`) are edited and committed in this repo. A new shared dotfile goes into
-`~/.system-bootstrap/.files` (commit it there) plus a `link:` line in `dotfiles/system-bootstrap.conf.yaml`. The
-fluxion `dotbot` phase re-runs whenever its probe (`dotfiles-link.sh --check`) finds a missing or wrong link, so
-`./bootstrap.sh --only dotfiles` picks up config edits too.
+`~/.system-bootstrap/.files` (commit it there) plus a `link:` line in `dotfiles/system-bootstrap.conf.yaml`. Run
+`just dotfiles` to link it now. `./bootstrap.sh` picks config edits up too: `bootstrap.sh` exports a digest of both
+dotbot configs and `scripts/dotfiles-link.sh` (`ZB_DOTFILES_INPUTS`), and the link item is named after it
+(`dotbot-links-<digest>`). fluxion skips a recorded item from state under `--skip-already-installed` and does not
+fingerprint the configs, so without that an edited config was never linked by the bootstrap. A new digest is a new
+item: its probe (`dotfiles-link.sh --check`) skips it when every link is already right, and otherwise it runs.
+
+The clone step is different: once recorded, `./bootstrap.sh` skips it from state, so it does not fast-forward the
+clone on later runs. Use `just dotfiles-pull` (or `./bootstrap.sh --only dotfiles --re-probe`).
 
 `~/.system-bootstrap/.files/.config/vesktop/vencord-settings-backup.json` is deliberately **not linked**. It is a
 backup that you import by hand; see the manual steps below.
@@ -639,7 +770,8 @@ described in the profile header.
   restart policies are removed, `interrupt` / `manual` / `shell-reload` steps are removed (and phases left empty,
   with their `dependsOn` references), `confirm:` guards are dropped, and relative `config:` paths become absolute.
   Each generated file starts with a comment that lists exactly what changed. Today that is the `session` logout
-  checkpoint and the three manual reminders in `post-checks`.
+  checkpoint and the three manual reminders in `post-checks`. The same list goes to
+  `tests/generated/production-only.tsv`, which the `prod-status` stage reports on.
 - `tests/generated/` is **git-ignored**: it is derived data, regenerated by `bootstrap.sh --test` and
   `tests/run-tests.sh` before every use (and `--check` shows a diff if it were stale), so it cannot drift.
 - `./bootstrap.sh --test ...` runs those profiles with state names `test-NAME`, so production state
@@ -652,6 +784,7 @@ described in the profile header.
 | `validate` | `fluxion validate --strict` + lint of each selected test profile, and `bootstrap.sh --test --dry-run` exits 0 with no checkpoint |
 | `apply` | `bootstrap.sh --test --only MODULES` exits 0 for every module |
 | `idempotency` | The same run again: every module exits 0 and nothing runs except its `assert` steps (fluxion re-checks every assert on each run and never skips a phase that holds one, see the caveats table). `--strict-idempotency` adds `--re-probe`, so recorded state is ignored and every item must be satisfied by its live probe; there package `actions` such as apt `update` also run when their step has no `probeCommand`, and are not counted either (every `actions: [update]` in these profiles has one, so none run: 00-base skips it for 6 h after a successful update, 10-apps once the step's package is installed); nor are `tool-packages` items of the pipx, uv-tool, snap, npm-global and go-install backends without a step `probeCommand`, because fluxion has no live probe for those (`fluxion status` shows them as unknown) and re-runs them. `cargo`/`cargo-binstall` crates and `sdkman-packages` candidates are probed per item by the patched fluxion build (fluxion.cr `fix/zorin-bootstrap`, commits 9d7b731 and 82f3e77), so they must be skipped; with fluxion 0.3.1 they come back unknown and strict idempotency reports them. Items that did run again are listed in `ran-again-MODULE.txt` in the log dir |
+| `prod-status` | Read-only, what the tests cannot run: for each production-only part in `production-only.tsv`, the live status from the **production** profile and state (`fluxion status --format json`): `done`, `PENDING` with the step's own message (the user's manual steps; reported, not failed), or `not exercised` (the log-out checkpoint). Listed under the summary table |
 | `assert` | `tests/assertions/MODULE.sh`: the real outcome. Packages from the profile's own lists, commands at their pinned versions, apt sources and keyrings, docker/containerd active and `docker run --rm hello-world` (with `sudo -n` until the docker group is active), `~/.system-bootstrap` clone and pushurl, every dotbot link resolving into the clone or this repo, skills links + the name check, an interactive zsh finding claude/codex/kimi, gsettings for `Super+1..9` (plus a scan for any other holder), `Super+D` -> vicinae and show-desktop, the vicinae user service and `ping`, login shell and group membership in `/etc/group` |
 
 ```bash
@@ -662,11 +795,23 @@ tests/run-tests.sh --only gnome,vicinae            # apply + idempotency + asser
 tests/run-tests.sh                                 # the whole default sequence
 tests/run-tests.sh --container                     # base,apps,toolchains,binaries,shell,dotfiles,wallpapers
                                                    # in a throwaway ubuntu:24.04 container (needs docker)
-FLUXION_BIN=~/Projects/Github/fluxion.cr-zorin-fixes/bin/fluxion tests/run-tests.sh ...   # another fluxion
+FLUXION_BIN=/path/to/fluxion tests/run-tests.sh --require-prod-bin ...   # another build; fail if production differs
 ```
 
-- `FLUXION_BIN` defaults to the patched dev build `~/Projects/Github/fluxion.cr-zorin-fixes/bin/fluxion` when it
-  exists, else the fluxion on PATH. `ASSERT_NETWORK=0` skips checks that need the network (`apt-get update`,
+- fluxion is resolved by `scripts/lib/fluxion-bin.sh`, exactly as `bootstrap.sh` resolves it (`$FLUXION_BIN`, else
+  `fluxion-bin.local`, else PATH), so a green run covers the production binary. The run prints the binary, where it
+  came from and its binstaller pin, refuses a build without the `fix/zorin-bootstrap` fixes, and warns when an
+  explicit `FLUXION_BIN` differs from what a plain `./bootstrap.sh` would run (`--require-prod-bin` makes that a
+  failure). Container mode mounts the same binary.
+- Run the host tests **from the GNOME session**. Without a session bus (SSH, cron) every check that needs it fails
+  instead of being skipped, so `gnome`, `vicinae` and `gnome-extensions` cannot pass with zero checks; only the
+  container skips them. List helpers (`assert_pkgs`, `assert_flatpaks`, `assert_snaps`) fail on an empty list, so a
+  profile whose shape changed cannot pass vacuously.
+- `tests/assertions/dotfiles.sh` proves "no copies": `tests/lib/find_copies.py` compares every git-tracked file of this
+  repo with every git-tracked file under the clone's `.files`, byte for byte and with comments, quotes and whitespace
+  normalised away. It also reports (skip) every binstaller version pin in the Zorin fork `config/binstaller.yaml` that
+  differs from the clone's.
+- `ASSERT_NETWORK=0` skips checks that need the network (`apt-get update`,
   `docker run`, the clone's `ls-remote`). `ASSERT_LIVE_INPUT=1` lets `gnome` press `Super+3`/`Super+1` for real
   (see [`gnome`](#gnome)).
 - Logs, the per-stage `--report` files and `summary.tsv` go to `tests/logs/<timestamp>/` (git-ignored; `--log-dir`
@@ -686,10 +831,9 @@ FLUXION_BIN=~/Projects/Github/fluxion.cr-zorin-fixes/bin/fluxion tests/run-tests
   in `container-skips.tsv` in the log dir, before the run and in the summary. The assertions run with
   `ASSERT_CONTEXT=container` and print a `skip` line (with the reason) for every check that needs systemd, snapd,
   flatpak, a GNOME session or a GUI module's output (claude/codex/kimi come from `desktop-apps`).
-- fluxion 0.3.1 reports every **apt package as "not installed"** in its probes (it replaces the tab in
-  `dpkg-query`'s output with a space before parsing it; see the caveats table). Plain idempotency is unaffected (the
-  second run skips completed phases), but `--strict-idempotency` needs a fluxion with that fixed: the patched build
-  in `~/Projects/Github/fluxion.cr-zorin-fixes` (branch `fix/zorin-bootstrap`), which the harness picks by default.
+- `post-checks` holds asserts that only pass in a session started after the `session` module (docker group, Vicinae
+  extension loaded). Until you log out and back in, its `apply` and `idempotency` stages fail on exactly those; the
+  assertions (`tests/assertions/post-checks.sh`) treat them as informational.
 
 ---
 
@@ -705,7 +849,7 @@ Put a new item in the module where it belongs, keep it in the right phase, then 
 | A snap | `profiles/60-desktop-apps.yaml`, phase `snaps` | Strict snaps: `tool-packages` with `backend: snap`. Classic snaps: a `commands` item with `sudo: true`, `run: snap install NAME --classic` and `unless: snap list NAME` |
 | A Rust CLI | `profiles/30-toolchains.yaml`, phase `rust-crates` | Add the crate name (installed with cargo-binstall) |
 | A release binary in `~/.apps` | `config/binstaller.yaml` | Add a binstaller entry (pin `version` + `checksum` when possible), then add its path to the `binaries-binstaller` probe in `profiles/40-binaries.yaml`, its `bin` dir to PATH (shared: `~/.system-bootstrap/.files/.zshrc`; Zorin-only: `dotfiles/custom.zsh`), and a check to `tests/assertions/binaries.sh` |
-| A Nerd Font | `config/nerd-fonts/0N-*.yaml` and `all.yaml` | Keep each batch under ~15 families (fixed 15 min timeout per batch) |
+| A Nerd Font | `config/nerd-fonts/0N-*.yaml` and `~/.system-bootstrap/.files/.config/nerd-fonts-installer/config.yaml` | Add it to a batch (keep each under ~15 families: fixed 15 min timeout per batch) and to the full list in the clone (commit and push from there); `tests/assertions/binaries.sh` checks the two agree |
 | A curl/installer script | the module that owns the tool | Prefer `shell-scripts` with `url` + `sha256` (+ `shell: bash` if it needs bash). Otherwise a `commands` item with `creates:` and a `probeCommand` so re-runs skip it |
 | A shared dotfile | `~/.system-bootstrap/.files/` + `dotfiles/system-bootstrap.conf.yaml` | Add and commit the file in the clone (push from there), add a `link:` entry here, then `just dotfiles` |
 | A Zorin-only dotfile | `dotfiles/` + `dotfiles/install.conf.yaml` | Add the file and a `link:` entry, then `just dotfiles` |
@@ -772,14 +916,19 @@ tests/run-tests.sh --only NAME                  # apply + idempotency + assertio
 
 ## fluxion 0.3.1 caveats handled here
 
+The rows marked *fixed on `fix/zorin-bootstrap`* are what [fluxion.cr patches](#fluxioncr-patches) is about; the
+rest are handled in the profiles and apply to the patched build too.
+
+
 | Caveat | How this repo handles it |
 |---|---|
 | **Zorin is not detected as `ubuntu`** (`ID=zorin`) | `target.os` says ubuntu/noble, and no step uses `when: {distribution: ubuntu}`. Every profile's `host-check` asserts noble and `apt-get` |
 | **`dotfiles-apply` is broken**: it passes `--config`, but dotbot-go only accepts `-c` (and it takes one config, while two base directories are needed here) | `80-dotfiles` runs `scripts/dotfiles-link.sh` from a `shell-scripts` step: `dotbot -d ~/.system-bootstrap/.files -c dotfiles/system-bootstrap.conf.yaml`, then `dotbot -d dotfiles -c dotfiles/install.conf.yaml`, with `--check` as the probe |
+| **The dotbot configs are not part of the `dotfiles` phase fingerprint, and a recorded item is skipped from state** (0.3.1 and `fix/zorin-bootstrap`), so an edited dotbot config was never linked by `./bootstrap.sh` | The link item is named `dotbot-links-<digest of both configs + dotfiles-link.sh>` (`ZB_DOTFILES_INPUTS`, exported by `bootstrap.sh`), so changed inputs make a new item that the `--check` probe decides |
 | **apt package probes always say "not installed"**: the output sanitizer turns the tab in `dpkg-query -f='${Status}\t${Version}'` into a space, so the probe never sees `install ok installed` (in 0.3.1 and current main, `src/fluxion/executor/probe.cr` + `redaction.cr`) | `--skip-already-installed` still skips completed phases, and `apt-get install` of an installed package changes nothing. Assertions check packages with `dpkg-query` directly. `tests/run-tests.sh --strict-idempotency` needs a fluxion with this fixed (done on the `fix/zorin-bootstrap` branch, which also batches each apt list into one `apt-get install` and probes `system-setting` items) |
 | **Passed `assert` steps were recorded in state** (0.3.1), so with `--skip-already-installed` their phase was skipped on the next run and the guard was not re-checked | Fixed on the `fix/zorin-bootstrap` branch (`af2c932`): an assert's pass is never stored or trusted from state, and a phase holding an assert is never skipped as complete (its other steps still skip from state/probes). Profiles keep plain `kind: assert` steps; with 0.3.1 a changed host is only re-checked under `--re-probe` |
 | **`apt-repository` probe only checked that the `.list` exists; `gpg-key` probe only that the keyring path exists** (0.3.1), so a vendor/hand-written `claude-desktop.list` (`signed-by=...asc`) or a wrong key at the keyring path counted as installed forever | Fixed on the `fix/zorin-bootstrap` branch (`f992d37`, `5d19083`): the source file must equal the declared `source` line and its keyring must be non-empty; a gpg-key keyring must hold exactly the declared fingerprint. `apps` declares `apps-claude-desktop-key` (fingerprint-pinned) + `apps-claude-desktop-repo` with no adopt step. With 0.3.1 on a host that already has the vendor `claude-desktop.list`, run the patched build once with `--re-probe --only apps` |
-| **A `prompt-logout` phase was never recorded as completed, and the run exited 0** (0.3.1): the halted phase only wrote a resume point, so every later run re-ran `session` and asked for a logout again, and `bootstrap.sh` saw rc 0 instead of the checkpoint code 75, so with `--with-optional` it carried on into the optional modules (post-checks included) before the re-login | Fixed on the `fix/zorin-bootstrap` branch (`4254ceb`): the phase is recorded as completed and `apply` exits 75, so `bootstrap.sh` stops at the checkpoint once and the next run skips `session` from state. With 0.3.1, run the optional modules only after logging back in (`./bootstrap.sh --only post-checks` etc.) and ignore the repeated logout notice |
+| **A `prompt-logout` phase was never recorded as completed, and the run exited 0** (0.3.1): the halted phase only wrote a resume point, so every later run re-ran `session` and asked for a logout again, and `bootstrap.sh` saw rc 0 instead of the checkpoint code 75, so with `--with-optional` it carried on into the optional modules (post-checks included) before the re-login | Fixed on the `fix/zorin-bootstrap` branch (`4254ceb`, `d699c4a`): the phase is recorded as completed and `apply` exits 75, so `bootstrap.sh` stops at the checkpoint once and the next run skips `session` from state. A `prompt-logout` phase in which nothing ran (every item skipped, or only asserts) does not ask at all, so `./bootstrap.sh --re-probe` and `--only session,obs` on a converged host run to the end |
 | **A step's `probeCommand` was re-run before every item** (0.3.1), so once an earlier script made it true the later scripts of that step were skipped ("skipped: installed (probe)") and the step still counted as a success | Fixed on the `fix/zorin-bootstrap` branch (`9a77b8f`): the step's `probeCommand` is answered once per apply for the whole step. Profiles follow one rule either way: one step per observable state, and each step's probe is true only when all its scripts are done. Work judged on what an earlier step leaves behind gets its own step (`vicinae-post-install`) |
 | **The flatpak probe only lists apps** (`flatpak list --app`, 0.3.1), but OBS plugins (`com.obsproject.Studio.Plugin.*`) are runtime refs, so after their install they still read as absent and `--re-probe` installs them again (a no-op for flatpak, but reported as changes) | Fixed on the `fix/zorin-bootstrap` branch (`7430ef4`): the probe lists every installed ref. With 0.3.1 the default (state-based) idempotency run still skips them; only `--strict-idempotency` on `obs` reports them as ran again. `assert_flatpaks` checks every ref, not only apps |
 | **`gpg-key` fails on a fresh account**: it reads each key with `gpg --batch --no-options --show-keys`, and with `--no-options` gpg will not create a missing `~/.gnupg` (`gpg: Fatal: ~/.gnupg: directory does not exist!`), so on a new install every `gpg-key` step failed (0.3.1 and `fix/zorin-bootstrap`; found by the container test) | `apps` creates `~/.gnupg` (0700) in its `gnupg-home` phase, which the three `gpg-key` phases depend on |
@@ -804,7 +953,10 @@ tests/run-tests.sh --only NAME                  # apply + idempotency + assertio
    login shell. If `session` failed, change the shell by hand with `chsh -s /usr/bin/zsh`. Then run
    `./bootstrap.sh --only post-checks`.
 
-`./bootstrap.sh --only post-checks` reminds you about the next three.
+`./bootstrap.sh --only post-checks` reminds you about the next three: each is a `manual` step whose probe passes once
+you have done it, and until then the module **exits 1** and prints the instruction (so a failed `post-checks` right
+after the re-login usually means only a reminder is open). `tests/run-tests.sh` lists them under "Production-only
+parts" with `done` / `PENDING`.
 
 1. **GitHub CLI:** run `gh auth login`.
 2. **SSH key:** run `ssh-keygen -t ed25519 -C "balyszyn@gmail.com"`, then `gh ssh-key add ~/.ssh/id_ed25519.pub`.
@@ -928,7 +1080,7 @@ Then edit the value in the profile and run `just validate`.
 | Flathub descriptor sha256 | `profiles/60-desktop-apps.yaml`, `profiles/optional/obs.yaml`, `profiles/optional/zorin-pro-parity.yaml` |
 | binstaller tool versions | `config/binstaller.yaml` |
 | Vicinae version, AppImage and install-script sha256, GNOME extension zip version and sha256 (also the literal versions in the probes) | `profiles/75-vicinae.yaml` |
-| fluxion itself | `FLUXION_VERSION` in `bootstrap.sh`. Read the fluxion changelog before bumping it, because the caveats above are specific to 0.3.1 |
+| fluxion itself | Today: rebuild the `fix/zorin-bootstrap` branch and `just use-fluxion PATH`. Once a release has those fixes: `FLUXION_VERSION` in `bootstrap.sh`, and delete `fluxion-bin.local`. Read the fluxion changelog before bumping it, because the caveats above are specific to 0.3.1 |
 
 ---
 
@@ -1003,6 +1155,10 @@ server). `tests/assertions/vicinae.sh` checks all of it.
 
 **`tool-packages` says its backend is missing** (`cargo-binstall`, `pipx`, ...): fluxion was started without the
 exported PATH. Always go through `./bootstrap.sh` or `just`.
+
+**`bootstrap.sh` stops with "pins binstaller v0.2.0 (< v0.3.0)"**: it resolved a fluxion without the
+`fix/zorin-bootstrap` fixes (usually 0.3.1 from `~/.local/bin`). Point it at the patched build with
+`just use-fluxion PATH` or `FLUXION_BIN=PATH`; see [fluxion.cr patches](#fluxioncr-patches).
 
 **A checksum or digest mismatch:** an upstream installer changed. Verify the new file and update the pin (see
 [Updating](#updating)).
