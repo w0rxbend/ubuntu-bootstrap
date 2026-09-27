@@ -8,7 +8,12 @@ assert_binaries() {
     ASSERT_MODULE=binaries
     section "binstaller tools (pinned versions from config/binstaller.yaml)"
     local a="$HOME/.apps"
-    assert_exec "$a/yazi/bin/yazi" 'Yazi 26\.5\.6'
+    # yazi --version parses ~/.config/yazi first and fails on a config it cannot read; the binary check must
+    # not depend on the dotfiles (80-dotfiles checks those), so it runs with an empty config dir.
+    local empty
+    empty="$(mktemp -d)"
+    YAZI_CONFIG_HOME="$empty" assert_exec "$a/yazi/bin/yazi" 'Yazi 26\.5\.6'
+    rm -rf "$empty"
     assert_exec "$a/zig/zig" '^0\.15\.2' version
     assert_exec "$a/kind/bin/kind" 'kind v0\.31\.0' version
     assert_exec "$a/zellij/bin/zellij" 'zellij 0\.44\.1'

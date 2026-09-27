@@ -111,7 +111,8 @@ assert_exec() {
         _a_ok "executable $path"
         return
     fi
-    out="$("$path" "${vargs[@]}" 2>&1 | head -n 5)" || true
+    # stdin from /dev/null: a tool that stops at a prompt (yazi on a bad config: "Press <Enter>") must not hang
+    out="$("$path" "${vargs[@]}" </dev/null 2>&1 | head -n 5)" || true
     if grep -Eq -- "$re" <<<"$out"; then
         _a_ok "$path matches /$re/"
     else

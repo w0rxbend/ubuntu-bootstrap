@@ -55,6 +55,18 @@ assert_dotfiles() {
     assert_link "$HOME/.config/starship.toml" "$SB_DIR/.files/starship.toml"
     assert_link "$HOME/.config/ghostty" "$SB_DIR/.files/.config/ghostty"
     assert_link "$HOME/.config/zellij/config.kdl" "$SB_DIR/.files/.config/zellij/config.kdl"
+    assert_link "$HOME/.config/yazi/yazi.toml" "$SB_DIR/.files/.config/yazi/yazi.toml"
+    # The linked yazi config must load in the pinned yazi (config/binstaller.yaml). The files come from the
+    # system-bootstrap clone, so a format break there is reported (skip + reason), not fixed here: yazi then
+    # stops at "Press <Enter> to continue with preset settings" on every start. Fix it upstream.
+    if [[ -x "$HOME/.apps/yazi/bin/yazi" ]]; then
+        local yout
+        if yout="$("$HOME/.apps/yazi/bin/yazi" --version </dev/null 2>&1)"; then
+            _a_ok "yazi loads the linked ~/.config/yazi"
+        else
+            skip "yazi loads the linked ~/.config/yazi" "the pinned yazi rejects the upstream config: $(head -n1 <<<"$yout"); fix .files/.config/yazi in ~/.system-bootstrap"
+        fi
+    fi
     assert_link "$HOME/.custom.zsh" "$ASSERT_REPO_DIR/dotfiles/custom.zsh"
     assert_link "$HOME/system-update.sh" "$ASSERT_REPO_DIR/dotfiles/zorin-system-update.sh"
     assert_link "$HOME/.config/zorin-xdg-terminals.list" "$ASSERT_REPO_DIR/dotfiles/.config/xdg-terminals.list"

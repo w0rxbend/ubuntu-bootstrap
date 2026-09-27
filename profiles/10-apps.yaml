@@ -133,6 +133,9 @@ spec:
         - name: apps-vscode
           kind: apt-packages
           spec:
+            # The step probe only gates `apt-get update` (the package keeps its dpkg probe): the new source's
+            # index is needed only to install code, so skip the update once it is installed.
+            probeCommand: "dpkg -s code 2>/dev/null | grep -qx 'Status: install ok installed'"
             actions: [update]
             packages: [code]
 
@@ -166,6 +169,9 @@ spec:
         - name: apps-1password
           kind: apt-packages
           spec:
+            # The step probe only gates `apt-get update` (the package keeps its dpkg probe): the new source's
+            # index is needed only to install 1password, so skip the update once it is installed.
+            probeCommand: "dpkg -s 1password 2>/dev/null | grep -qx 'Status: install ok installed'"
             actions: [update]
             packages: [1password]
 
