@@ -4,14 +4,18 @@
 # declaratively. Every app is its own leaf phase, so one broken vendor repo never blocks
 # the others:
 #   gh (GitHub CLI repo), claude-desktop (Anthropic repo), VS Code (Microsoft repo),
-#   1Password (1Password repo), ChatGPT desktop (.deb), fastfetch (.deb from GitHub).
+#   1Password (1Password repo), ChatGPT desktop (.deb), fastfetch (.deb from GitHub),
+#   Crystal (openSUSE OBS devel:languages:crystal repo).
 #
 # Run alone:   ./bootstrap.sh --only apps
 # Caveats:
 #   - gh and claude-desktop use apt-repository and write the SAME .list files that already
 #     exist on this host, so they are overwritten rather than duplicated. Fluxion always
-#     `gpg --dearmor`s keys, therefore the claude-desktop keyring is a .gpg file (the host's
-#     old .asc keyring becomes unused and is harmless).
+#     `gpg --dearmor`s keys, therefore the claude-desktop keyring is a .gpg file. The package's
+#     postinst still rewrites /usr/share/keyrings/claude-desktop-archive-keyring.asc on every
+#     install/upgrade; that file is harmless. Our claude-desktop.list has no
+#     "### Managed by the claude-desktop package." marker, so the postinst leaves it alone and
+#     it keeps pointing at the dearmored .gpg.
 #   - VS Code and 1Password keep their vendor deb822 .sources files (their package postinst
 #     scripts own them). They are written byte-identical to what the packages write, with the
 #     keys installed by gpg-key at the same keyring paths, so apt never sees conflicting
@@ -22,6 +26,12 @@
 #     chatgpt.sources), so it is installed from the vendor .deb; later updates come via apt.
 #   - fastfetch is not in the noble archive; the upstream .deb is installed (update it by
 #     re-running with --re-probe after removing it, or via the upstream release page).
+#   - Crystal: installed by hand on this host with `sudo apt install crystal` (1.11.2 from noble
+#     universe) after `crystal-lang.org/install.sh | sudo zsh` wrote a broken source (00-base
+#     removes it). This phase adds the repo the installer meant to add; sourceList replaces the
+#     same crystal.list path. An already-installed archive crystal is only upgraded by the next
+#     `apt full-upgrade` (or `update`). The OBS signing key expires 2027-09-22; when OBS renews
+#     it, update the sha256 below.
 #   - Brave is a Zorin default and is intentionally not managed here.
 apiVersion: initkit.io/v1alpha1
 kind: WorkstationProfile
@@ -175,3 +185,21 @@ spec:
                 unless: "dpkg -s fastfetch >/dev/null 2>&1"
                 run: 'set -euo pipefail; d=$(mktemp -d); trap ''find "$d" -delete'' EXIT; curl -fsSL -o "$d/fastfetch-linux-amd64.deb" https://github.com/fastfetch-cli/fastfetch/releases/latest/download/fastfetch-linux-amd64.deb; chmod 0755 "$d"; chmod 0644 "$d/fastfetch-linux-amd64.deb"; apt-get install -y "$d/fastfetch-linux-amd64.deb"'
             probeCommand: "dpkg -s fastfetch >/dev/null 2>&1"
+
+    - name: crystal
+      description: "Crystal compiler from the openSUSE OBS devel:languages:crystal repo (xUbuntu_24.04)"
+      dependsOn: [host-check]
+      execution: { continueOnError: false }
+      steps:
+        - name: apps-crystal-repo
+          kind: apt-repository
+          spec:
+            source: deb [signed-by=/etc/apt/keyrings/crystal.gpg] https://download.opensuse.org/repositories/devel:/languages:/crystal/xUbuntu_24.04/ /
+            sourceList: /etc/apt/sources.list.d/crystal.list
+            signingKeyUrl: https://download.opensuse.org/repositories/devel:/languages:/crystal/xUbuntu_24.04/Release.key
+            keyring: /etc/apt/keyrings/crystal.gpg
+            checksum: { algorithm: sha256, value: d841f03d9866316a5dbb4a1a8032f61b9437f2493223775c3a299985c9ad8a6a }
+        - name: apps-crystal
+          kind: apt-packages
+          spec:
+            packages: [crystal]

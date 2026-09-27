@@ -24,7 +24,7 @@ skip() { printf '   (skipped: %s)\n' "$2"; skipped+=("$1"); }
 have() { command -v "$1" >/dev/null 2>&1; }
 
 # Toolchain bins are not always on PATH in a non-interactive shell.
-export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.juliaup/bin:$HOME/.local/share/pnpm:$HOME/.go/bin:$PATH"
+export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.juliaup/bin:$HOME/.local/share/pnpm/bin:$HOME/.go/bin:$PATH"
 
 # ---------------------------------------------------------------- apt
 section "APT (update, full-upgrade, autoremove)"
@@ -158,8 +158,8 @@ section "Summary"
 if [ "${#skipped[@]}" -gt 0 ]; then
   echo "Skipped: ${skipped[*]}"
 fi
-echo "Binaries in ~/.apps (binstaller) and nerd fonts are refreshed with:"
-echo "    cd ~/.zorin-bootstrap && ./bootstrap.sh --only binaries"
+echo "Binaries in ~/.apps (binstaller) and Nerd Fonts are refreshed with:"
+echo "    cd ~/.zorin-bootstrap && just refresh-binaries    # and: just refresh-fonts"
 if [ "${#failed[@]}" -gt 0 ]; then
   printf '\033[1;31mFailed sections: %s\033[0m\n' "${failed[*]}"
   exit 1

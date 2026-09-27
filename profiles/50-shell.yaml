@@ -20,7 +20,9 @@
 #     force-replaces ~/.zshrc with the repo symlink.
 #   - git-repo never pulls/resets: an existing plugin checkout at another commit is reported as
 #     a failure of the zsh-plugins phase. Delete the directory (or bump the ref) and re-run.
-#   - ~/.config/xdg-terminals.list is managed by dotbot (80-dotfiles), not here.
+#   - kitty is made the default terminal twice over: here as the Debian x-terminal-emulator
+#     alternative (what GNOME/GLib falls back to without xdg-terminal-exec), and in 80-dotfiles
+#     via ~/.config/{,zorin-,GNOME-}xdg-terminals.list (dotbot links).
 #   - The ghostty snap needs a warm sudo ticket (sudo -v); bootstrap.sh takes care of that.
 apiVersion: initkit.io/v1alpha1
 kind: WorkstationProfile
@@ -140,6 +142,23 @@ spec:
                 unless: "grep -q kitty.app $HOME/.local/share/applications/kitty.desktop"
                 timeout: 2m
             probeCommand: "grep -q kitty.app $HOME/.local/share/applications/kitty.desktop"
+        - name: kitty-default-terminal
+          kind: shell-scripts
+          description: "Register kitty as the x-terminal-emulator alternative and select it"
+          spec:
+            shell: bash
+            scripts:
+              - name: kitty-x-terminal-emulator
+                sudo: true
+                timeout: 1m
+                args: ["${HOME}"]
+                content: |
+                  set -euo pipefail
+                  kitty="$1/.local/kitty.app/bin/kitty"
+                  test -x "$kitty"
+                  update-alternatives --install /usr/bin/x-terminal-emulator x-terminal-emulator "$kitty" 60
+                  update-alternatives --set x-terminal-emulator "$kitty"
+            probeCommand: "readlink -f /etc/alternatives/x-terminal-emulator | grep -q kitty.app"
 
     - name: ghostty
       description: "ghostty terminal (classic snap, as installed on this host)"

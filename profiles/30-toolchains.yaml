@@ -32,6 +32,8 @@ spec:
   target:
     os: { distribution: ubuntu, codename: noble, release: "24.04" }
   vars:
+    # Bumping Go: also change the literal 'go1.27.1 ' in the go-toolchain probeCommand
+    # (fluxion refuses ${...} in probes). A stale probe never matches and reinstalls Go.
     goVersion: "1.27.1"
     goSha256: 63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445
   phases:
@@ -188,7 +190,7 @@ spec:
 
     # --- Small user-level installers (one leaf phase each) --------------------
     - name: pnpm
-      description: "pnpm standalone into ~/.local/share/pnpm (PNPM_HOME in .zshrc)"
+      description: "pnpm standalone; PNPM_HOME=~/.local/share/pnpm, binary in $PNPM_HOME/bin (pnpm >= 11 layout)"
       dependsOn: [host-check]
       steps:
         - name: pnpm
@@ -197,9 +199,9 @@ spec:
             commands:
               - name: pnpm
                 run: "set -o pipefail; curl -fsSL https://get.pnpm.io/install.sh | env PNPM_HOME=\"$HOME/.local/share/pnpm\" sh -"
-                creates: ${HOME}/.local/share/pnpm/pnpm
+                creates: ${HOME}/.local/share/pnpm/bin/pnpm
                 timeout: 10m
-            probeCommand: "test -x $HOME/.local/share/pnpm/pnpm"
+            probeCommand: "test -x $HOME/.local/share/pnpm/bin/pnpm"
 
     - name: pyenv
       description: "pyenv in ~/.pyenv (build deps are in 00-base apt-build)"
@@ -284,12 +286,14 @@ spec:
                 run: "set -o pipefail; mkdir -p \"$HOME/.apps/kustomize/bin\" && curl -fsSL https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh | bash -s -- \"$HOME/.apps/kustomize/bin\""
                 creates: ${HOME}/.apps/kustomize/bin/kustomize
             probeCommand: "test -x $HOME/.apps/kustomize/bin/kustomize"
+        # get-helm-4 ends with `command -v helm` and exits 1 when the install dir is not on
+        # PATH, so the dir is put on PATH for this item.
         - name: helm
           kind: commands
           spec:
             commands:
               - name: helm
-                run: "set -o pipefail; mkdir -p \"$HOME/.apps/helm/bin\" && curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | env HELM_INSTALL_DIR=\"$HOME/.apps/helm/bin\" USE_SUDO=false bash"
+                run: "set -o pipefail; mkdir -p \"$HOME/.apps/helm/bin\" && export PATH=\"$HOME/.apps/helm/bin:$PATH\" && curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-4 | env HELM_INSTALL_DIR=\"$HOME/.apps/helm/bin\" USE_SUDO=false bash"
                 creates: ${HOME}/.apps/helm/bin/helm
             probeCommand: "test -x $HOME/.apps/helm/bin/helm"
 

@@ -10,8 +10,12 @@
 #   - nerd-fonts-installer, 42 families split into 4 batches
 #     (../config/nerd-fonts/0N-*.yaml) because the kind has a fixed 15 min timeout.
 #
-# Run alone:   ./bootstrap.sh --only binaries
-# (also the way to refresh the `latest` binaries in ~/.apps later)
+# Run alone:   ./bootstrap.sh --only binaries   (first install; skips what is present)
+# Refresh / version bump: bootstrap.sh always passes --skip-already-installed, and then the
+# probes below (all 13 executables present, fc-list finds the family) skip these phases even
+# when the config changed. Re-run them without that flag instead:
+#   just refresh-binaries   = fluxion apply -c profiles/40-binaries.yaml --profile binaries --phase binstaller --no-tui
+#   just refresh-fonts      = the same with --phase fonts-core,fonts-more,fonts-rest,fonts-noto
 #
 # Caveats:
 # - binstaller and nerd-fonts-installer are resolved by fluxion itself (PATH,
@@ -23,7 +27,10 @@
 #   (sudo is kept warm by bootstrap.sh).
 # - The font phases are independent leaves; one failed batch does not block the
 #   others. The same configs are dotbot-linked for manual reruns
-#   (~/.config/nerd-fonts-installer/config.yaml = all 42 families).
+#   (~/.config/nerd-fonts-installer/config.yaml = all 42 families). Neither tool is
+#   put on PATH; after `fluxion tools install binstaller nerd-fonts-installer` run them
+#   from the cache: ~/.cache/fluxion/tools/binstaller/v0.2.0/binstaller apply --config ...
+#   and ~/.cache/fluxion/tools/nerd-fonts-installer/v1.0.7/nerd-fonts-installer --config ...
 # -----------------------------------------------------------------------------
 apiVersion: initkit.io/v1alpha1
 kind: WorkstationProfile

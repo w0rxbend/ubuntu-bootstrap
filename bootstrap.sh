@@ -11,6 +11,7 @@
 #   ./bootstrap.sh --only toolchains  # one module (default or optional)
 #   ./bootstrap.sh --from shell       # resume the default sequence at a module
 #   ./bootstrap.sh --list             # list modules
+#   ./bootstrap.sh --only apps --tui  # fluxion's interactive selector/TUI (off by default)
 #
 # The script never reads, stores or passes a password. It calls `sudo -v` once in your terminal
 # and keeps that ticket warm while fluxion runs; fluxion itself only ever uses `sudo -n`.
@@ -87,7 +88,9 @@ Selection:
 
 Pass-through to fluxion apply/dry-run:
   --yes, -y          approve items that declare confirm
-  --no-tui           plain output instead of the terminal UI
+  --tui              open fluxion's full-screen selector/TUI per module (apply only; press
+                     enter to start and q to close; q at the selector skips the module)
+  --no-tui           plain output (the default; accepted for compatibility)
   --show-output      echo each command's own output
   --re-probe         ignore recorded state and trust live probes only
 
@@ -166,6 +169,7 @@ MODE=apply
 ONLY=''
 FROM=''
 PASS_ARGS=()
+USE_TUI=0
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -191,7 +195,8 @@ while [[ $# -gt 0 ]]; do
             ;;
         --from=*) FROM="${1#--from=}" ;;
         -y | --yes) PASS_ARGS+=(--yes) ;;
-        --no-tui) PASS_ARGS+=(--no-tui) ;;
+        --tui) USE_TUI=1 ;;
+        --no-tui) USE_TUI=0 ;;
         --show-output) PASS_ARGS+=(--show-output) ;;
         --re-probe) PASS_ARGS+=(--re-probe) ;;
         -h | --help)
@@ -262,7 +267,7 @@ fi
 
 # PATH for fluxion: it inherits PATH once and never refreshes it, and `tool-packages` looks up
 # its backends (cargo-binstall, pipx, ...) on this PATH. Export everything the modules install.
-export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.go/bin:$HOME/.go-workspace/bin:$HOME/.apps/dotbot/bin:$HOME/.apps/neovim/bin:$HOME/.apps/yq/bin:$HOME/.local/share/pnpm:$HOME/.juliaup/bin:$PATH"
+export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.go/bin:$HOME/.go-workspace/bin:$HOME/.apps/dotbot/bin:$HOME/.apps/neovim/bin:$HOME/.apps/yq/bin:$HOME/.apps/helm/bin:$HOME/.apps/kustomize/bin:$HOME/.local/share/pnpm/bin:$HOME/.juliaup/bin:$PATH"
 
 if ! command -v fluxion >/dev/null 2>&1; then
     command -v curl >/dev/null 2>&1 || die "curl is required to install fluxion: sudo apt install -y curl"
@@ -383,14 +388,13 @@ run_profile() {
     local sub=apply
     [[ "$MODE" == dry-run ]] && sub=dry-run
     local cmd=("$FLUXION_BIN" "$sub" -c "$file" --profile "$name" --skip-already-installed)
-    [[ "$MODE" == dry-run ]] && cmd+=(--no-tui)
+    # Plain output by default so the sequence runs unattended. The TUI waits for enter/q per
+    # module, and backing out of its selector exits 0, which would be reported as "ok".
+    if [[ "$MODE" == dry-run || $USE_TUI -eq 0 ]]; then
+        cmd+=(--no-tui)
+    fi
     if [[ ${#PASS_ARGS[@]} -gt 0 ]]; then
-        local a
-        for a in "${PASS_ARGS[@]}"; do
-            # --no-tui was already added for dry-run
-            [[ "$MODE" == dry-run && "$a" == --no-tui ]] && continue
-            cmd+=("$a")
-        done
+        cmd+=("${PASS_ARGS[@]}")
     fi
     printf '%s$ %s%s\n' "$C_DIM" "${cmd[*]}" "$C_RESET"
     "${cmd[@]}" || rc=$?

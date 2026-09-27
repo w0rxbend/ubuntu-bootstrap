@@ -322,11 +322,15 @@ export SDKMAN_DIR="$HOME/.sdkman"
 [ -s "$HOME/.config/envman/load.sh" ] && source "$HOME/.config/envman/load.sh"
 
 
-# pnpm
+# pnpm (pnpm >= 11 puts its executables in $PNPM_HOME/bin; $PNPM_HOME kept for older layouts)
 export PNPM_HOME="$HOME/.local/share/pnpm"
 case ":$PATH:" in
   *":$PNPM_HOME:"*) ;;
   *) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+case ":$PATH:" in
+  *":$PNPM_HOME/bin:"*) ;;
+  *) export PATH="$PNPM_HOME/bin:$PATH" ;;
 esac
 # pnpm end
 

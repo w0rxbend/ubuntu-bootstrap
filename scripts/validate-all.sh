@@ -29,7 +29,7 @@ case "${1:-}" in
 esac
 
 # Same PATH as bootstrap.sh, so profiles resolve identically.
-export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.go/bin:$HOME/.go-workspace/bin:$HOME/.apps/dotbot/bin:$HOME/.apps/neovim/bin:$HOME/.apps/yq/bin:$HOME/.local/share/pnpm:$HOME/.juliaup/bin:$PATH"
+export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$HOME/.go/bin:$HOME/.go-workspace/bin:$HOME/.apps/dotbot/bin:$HOME/.apps/neovim/bin:$HOME/.apps/yq/bin:$HOME/.apps/helm/bin:$HOME/.apps/kustomize/bin:$HOME/.local/share/pnpm/bin:$HOME/.juliaup/bin:$PATH"
 
 if ! command -v fluxion >/dev/null 2>&1; then
     echo "fluxion is not installed; run ./bootstrap.sh --validate (it installs fluxion) or see README.md" >&2

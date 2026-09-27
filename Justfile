@@ -9,7 +9,7 @@ home := env_var("HOME")
 
 # Same PATH that bootstrap.sh exports, so fluxion/dotbot resolve identically.
 
-export PATH := home + "/.cargo/bin:" + home + "/.local/bin:" + home + "/.go/bin:" + home + "/.go-workspace/bin:" + home + "/.apps/dotbot/bin:" + home + "/.apps/neovim/bin:" + home + "/.apps/yq/bin:" + home + "/.local/share/pnpm:" + home + "/.juliaup/bin:" + env_var("PATH")
+export PATH := home + "/.cargo/bin:" + home + "/.local/bin:" + home + "/.go/bin:" + home + "/.go-workspace/bin:" + home + "/.apps/dotbot/bin:" + home + "/.apps/neovim/bin:" + home + "/.apps/yq/bin:" + home + "/.apps/helm/bin:" + home + "/.apps/kustomize/bin:" + home + "/.local/share/pnpm/bin:" + home + "/.juliaup/bin:" + env_var("PATH")
 
 # List available recipes
 default:
@@ -97,6 +97,16 @@ dotfiles-dry:
 # Update everything (apt, snap, flatpak, rustup, sdkman, nvm, ...) via ~/system-update.sh
 update:
     "$HOME/system-update.sh"
+
+# Without --skip-already-installed on purpose: the 13-executable probe would skip the phase.
+
+# Re-download the ~/.apps binaries with binstaller (after a version bump in config/binstaller.yaml)
+refresh-binaries:
+    fluxion apply -c profiles/40-binaries.yaml --profile binaries --phase binstaller --no-tui
+
+# Re-run all four Nerd Font batches (e.g. after adding families; the fc-list probes would skip them)
+refresh-fonts:
+    fluxion apply -c profiles/40-binaries.yaml --profile binaries --phase fonts-core,fonts-more,fonts-rest,fonts-noto --no-tui
 
 # --- Optional modules ----------------------------------------------------------------------
 

@@ -26,6 +26,8 @@ spec:
   target:
     os: { distribution: ubuntu, codename: noble, release: "24.04" }
   vars:
+    # Bumping distrobox: also change the literal 'distrobox: 1.8.2.5' in the docker-distrobox
+    # probeCommand (fluxion refuses ${...} in probes; a stale probe reinstalls every run).
     distroboxVersion: "1.8.2.5"
     distroboxSha256: 0c3bc4785ee3be3b89f93abb7cc0a9f60e56989e81319af140a4b60403b18f80
   phases:

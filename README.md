@@ -69,6 +69,11 @@ fluxion doctor -c profiles/00-base.yaml
 ./bootstrap.sh
 ```
 
+The run is unattended: `bootstrap.sh` passes `--no-tui`, so fluxion prints plain output instead of opening its
+full-screen selector for each module. Add `--tui` to get the selector (press `enter` to start and `q` to close the
+screen after the run). Pressing `q` **at the selector** skips that module, and fluxion still exits 0, so the
+summary reports it as `ok` even though nothing ran.
+
 `fluxion doctor` always prints `[warn] host os unrecognised: zorin`; that is expected (see the caveats table). On a
 fresh host `doctor` also fails `cargo-binstall command not found` for `30-toolchains.yaml` and `pipx command not
 found` for `optional/gnome-extensions.yaml`. Both are installed by an earlier phase/module of the same run
@@ -101,12 +106,12 @@ one** and prints a summary at the end. Fix whatever failed and re-run just that 
 
 ```
 ./bootstrap.sh [--dry-run | --validate | --plan | --status | --failed | --list]
-               [--only a,b | --from NAME] [--yes] [--no-tui] [--show-output] [--re-probe]
+               [--only a,b | --from NAME] [--yes] [--tui] [--show-output] [--re-probe]
 ```
 
 | Flag | Effect |
 |---|---|
-| *(none)* | Runs `fluxion apply --profile NAME --skip-already-installed` for every default module, in order |
+| *(none)* | Runs `fluxion apply --profile NAME --skip-already-installed --no-tui` for every default module, in order |
 | `--dry-run` | Runs `fluxion dry-run --no-tui`: prints the exact commands and changes nothing. No sudo |
 | `--validate` | Runs `fluxion validate --strict` and `fluxion lint` on each selected module |
 | `--plan` | Runs `fluxion plan --format tree` |
@@ -114,7 +119,9 @@ one** and prints a summary at the end. Fix whatever failed and re-run just that 
 | `--list` | Lists the modules and their files |
 | `--only a,b` | Selects only these modules, default or optional. They always run in table order |
 | `--from NAME` | Resumes the default sequence at `NAME` |
-| `--yes`, `--no-tui`, `--show-output`, `--re-probe` | Passed through to fluxion |
+| `--tui` | Opens fluxion's interactive selector/TUI for each module instead of plain output (apply only) |
+| `--no-tui` | The default; accepted for compatibility |
+| `--yes`, `--show-output`, `--re-probe` | Passed through to fluxion |
 
 Before any module runs, the script does these checks and setup steps:
 
@@ -123,7 +130,7 @@ Before any module runs, the script does these checks and setup steps:
   noble-based.
 - It installs fluxion when it is missing and warns if the version is not 0.3.1.
 - It exports a PATH that includes every tool location the modules create: `~/.cargo/bin`, `~/.local/bin`,
-  `~/.go/bin`, `~/.apps/{dotbot,neovim,yq}/bin`, pnpm and juliaup.
+  `~/.go/bin`, `~/.apps/{dotbot,neovim,yq,helm,kustomize}/bin`, `~/.local/share/pnpm/bin` and juliaup.
 - It runs `sudo -v` once and then refreshes the ticket with `sudo -n -v` every 50 s until the script exits.
 
 Each module is validated before it is applied. The exit code is 0 when everything succeeded or the log-out
@@ -145,6 +152,7 @@ The script never sees your password. `sudo` prompts for it directly, and fluxion
 | `just state NAME` / `just state-reset NAME` | Shows or deletes the fluxion state recorded for a module |
 | `just dotfiles` / `just dotfiles-dry` | Runs dotbot directly: re-links everything, or previews without changing anything |
 | `just update` | `~/system-update.sh` (apt, snap, flatpak, rustup, SDKMAN, nvm, ...) |
+| `just refresh-binaries` / `just refresh-fonts` | Re-runs the binstaller phase / the four Nerd Font phases without `--skip-already-installed` (see [Updating](#updating)) |
 | `just obs` / `pro-parity` / `gnome-extensions` / `wallpapers` / `post-checks` | The optional modules |
 
 ---
@@ -226,14 +234,14 @@ Default sequence (`./bootstrap.sh`):
 
 | # | Module | File | What it does |
 |---|---|---|---|
-| 1 | `base` | `profiles/00-base.yaml` | `apt full-upgrade`, debconf preseeds, about 190 Ubuntu-archive packages (CLI, build, debug, GUI-dev, media, fonts, TeX, desktop, virtualisation), libvirtd, global git config, NTP clock, `bat` symlink |
-| 2 | `apps` | `profiles/10-apps.yaml` | Third-party apt apps: GitHub CLI, Claude Desktop, VS Code, 1Password (repo and key), ChatGPT and fastfetch (`.deb`) |
+| 1 | `base` | `profiles/00-base.yaml` | Repair of the broken Crystal apt source, `apt full-upgrade`, debconf preseeds, about 190 Ubuntu-archive packages (CLI, build, debug, GUI-dev, media, fonts, TeX, desktop, virtualisation), GPU tools chosen by `lspci`, libvirtd, global git config, NTP clock, `bat` symlink |
+| 2 | `apps` | `profiles/10-apps.yaml` | Third-party apt apps: GitHub CLI, Claude Desktop, VS Code, 1Password, Crystal (repo and key), ChatGPT and fastfetch (`.deb`) |
 | 3 | `docker` | `profiles/20-docker.yaml` | Docker CE, buildx and the compose plugin from Docker's apt repo, the docker/containerd services, distrobox |
 | 4 | `toolchains` | `profiles/30-toolchains.yaml` | rustup, cargo-binstall and 14 crates, Go 1.27.1, SDKMAN and 8 candidates, nvm and Node LTS, pnpm, pyenv, poetry, uv, Miniforge, juliaup, kustomize, helm 4, dotenvx |
 | 5 | `binaries` | `profiles/40-binaries.yaml` | binstaller profile (13 tools in `~/.apps`), `nvim`/`vim` links in `/usr/local/bin`, Nerd Fonts in 4 batches |
-| 6 | `shell` | `profiles/50-shell.yaml` | oh-my-zsh (pinned) and 3 plugins, TPM, starship, kitty (upstream build and desktop integration), ghostty snap |
-| 7 | `desktop-apps` | `profiles/60-desktop-apps.yaml` | Flathub remote, 54 flatpaks in category groups, theia-ide and telegram snaps, Claude Code, Codex and Kimi CLIs, Zed, Paseo |
-| 8 | `gnome` | `profiles/70-gnome.yaml` | 9 fixed workspaces, `Super+N` / `Super+Shift+N` bindings, screenshot keys, Zorin Taskbar hot-keys turned off |
+| 6 | `shell` | `profiles/50-shell.yaml` | oh-my-zsh (pinned) and 3 plugins, TPM, starship, kitty (upstream build, desktop integration, `x-terminal-emulator` alternative), ghostty snap |
+| 7 | `desktop-apps` | `profiles/60-desktop-apps.yaml` | Flathub remote, 55 flatpaks in category groups, theia-ide and telegram snaps, Claude Code, Codex and Kimi CLIs, Zed, Paseo |
+| 8 | `gnome` | `profiles/70-gnome.yaml` | 9 fixed workspaces, `Super+N` / `Super+Shift+N` bindings, screenshot keys, Zorin Taskbar hot-keys turned off, pinned favourites |
 | 9 | `dotfiles` | `profiles/80-dotfiles.yaml` | Links the dotfiles with dotbot-go, installs the tmux plugins through TPM, sets up the broot launcher |
 | 10 | `session` | `profiles/90-session.yaml` | zsh as login shell, `docker`/`libvirt`/`kvm` groups, **log-out checkpoint** |
 
@@ -257,16 +265,21 @@ The profile files have the exact spec for each item. This section is a quick sum
 
 | Group | Packages |
 |---|---|
-| core | ca-certificates curl wget gnupg git zsh unzip zip xz-utils fontconfig fuse3 libfuse2t64 software-properties-common debconf-utils apt-transport-https |
-| CLI | alacritty bat btop fzf htop tmux wl-clipboard jq net-tools hyperfine asciinema gdu xsensors lm-sensors stress zoxide tig mtr nmap httpie ripgrep pipx stacer tree mediainfo libimage-exiftool-perl imagemagick poppler-utils ffmpegthumbnailer 7zip python3-venv python3-pip python3-dev |
+| core | ca-certificates curl wget gnupg git zsh unzip zip xz-utils fontconfig fuse3 libfuse2t64 software-properties-common debconf-utils apt-transport-https pciutils |
+| CLI | alacritty bat btop fzf htop tmux wl-clipboard jq net-tools hyperfine asciinema gdu xsensors lm-sensors stress zoxide tig wev foot mtr nmap httpie ripgrep pipx stacer tree mediainfo libimage-exiftool-perl imagemagick poppler-utils ffmpegthumbnailer 7zip python3-venv python3-pip python3-dev |
 | build | build-essential gcc g++ pkg-config clang clangd clang-format clang-tidy clang-tools llvm llvm-dev libclang-dev libclang-rt-dev lld lldb make cmake meson ninja-build ccache flex bison gperf, plus the -dev libraries that pyenv, Python and Rust builds need (readline, ffi, ssl, zlib, bz2, sqlite3, lzma, tk, ncurses, xml2, xmlsec1, secret) and dfu-util |
 | debug | gdb valgrind strace ltrace linux-tools-common linux-tools-generic-hwe-24.04 tshark protobuf-compiler |
 | GUI dev | GTK 3/4 and GObject-introspection dev packages, WebKitGTK 6, X11/Xcursor/Xrandr/Xi/Xinerama dev, Mesa/GL/EGL/GBM dev, mesa-utils, mesa-vdpau-drivers |
-| media | vlc mpv imv ffmpeg, libav* dev packages, the GStreamer plugin sets (base/good/bad/ugly/libav/vaapi/pipewire), libopenh264-7, VA-API/VDPAU and vainfo, radeontop (AMD GPU), PipeWire and wireplumber, easyeffects, power-profiles-daemon, upower, **ubuntu-restricted-extras** (EULA preseeded), **v4l2loopback-dkms** and HWE headers |
+| media | vlc mpv imv ffmpeg, libav* dev packages, the GStreamer plugin sets (base/good/bad/ugly/libav/vaapi/pipewire), libopenh264-7, VA-API/VDPAU and vainfo, PipeWire and wireplumber, easyeffects, power-profiles-daemon, upower, **ubuntu-restricted-extras** (EULA preseeded), **v4l2loopback-dkms** and HWE headers |
 | fonts / TeX | fonts-firacode fonts-font-awesome fonts-noto-core fonts-noto-color-emoji fonts-roboto, texlive-base/latex-base/latex-recommended/fonts-recommended/xetex |
 | desktop | gnome-tweaks, shell-extension prefs and extensions, gnome-browser-connector, xdg-desktop-portal-gtk, gnome-keyring, libpam-gnome-keyring, seahorse, gcr, gcr4, zathura (+pdf-poppler), mupdf |
+| GPU (by `lspci`, as in the old scripts) | `radeontop` when an AMD GPU is present, `intel-media-va-driver` (iHD VA-API) when an Intel GPU is present; nothing otherwise |
 | virt | qemu-system-x86 qemu-utils ovmf libvirt-daemon-system libvirt-clients virtinst virt-manager bridge-utils dnsmasq-base vde2 netcat-openbsd cpu-checker, plus `libvirtd` enabled and started |
 | config | git `user.email`, `user.name` = w0rxbend, `pull.rebase=true`, `init.defaultBranch=main`, `core.autocrlf=input`; NTP on and RTC in UTC; `~/.local/bin/bat` pointing to `batcat` |
+
+Before anything runs `apt-get update`, the `apt-sources-repair` phase moves aside the broken Crystal source this host got
+from `curl -fsSL https://crystal-lang.org/install.sh | sudo zsh` (see [Troubleshooting](#troubleshooting)). It does
+nothing when the files are absent or correct.
 
 Debconf preseeds run first: they accept the mscorefonts EULA and set wireshark to `install-setuid=false`. fluxion does
 not set `DEBIAN_FRONTEND`, so without the preseeds these packages could hang waiting for an answer.
@@ -281,8 +294,13 @@ not set `DEBIAN_FRONTEND`, so without the preseeds these packages could hang wai
 | `1password` | 1Password key (fingerprint-pinned) and a `1password.sources` file identical to the one the package writes |
 | `chatgpt` | The latest `.deb` from `persistent.oaistatic.com`. Its postinst adds the repo and keyring, since there is no public key URL |
 | `fastfetch` | The latest `.deb` from the fastfetch GitHub releases (it is not in the noble archive) |
+| `crystal` | openSUSE OBS `devel:languages:crystal` repo (`xUbuntu_24.04`, the one `crystal-lang.org/install.sh` sets up), keyring `/etc/apt/keyrings/crystal.gpg` (sha256-pinned; the key expires 2027-09-22). On this host it was installed by hand as `sudo apt install crystal` (1.11.2 from universe); the next `apt full-upgrade` moves it to the OBS build |
 
 Brave is not touched. It is Zorin 18's default browser and comes from Zorin's apt source.
+
+The `claude-desktop` package's postinst rewrites `/usr/share/keyrings/claude-desktop-archive-keyring.asc` on every
+install and upgrade. That file is harmless. The `claude-desktop.list` written here has no `### Managed by the
+claude-desktop package.` marker, so the postinst leaves it alone and it keeps pointing at the dearmored `.gpg`.
 
 ### `docker`
 
@@ -299,12 +317,12 @@ See [Docker instead of podman](#docker-instead-of-podman).
 | SDKMAN | `get.sdkman.io` (sha256-pinned), run with **bash**, auto-answer on | `~/.sdkman` |
 | SDKMAN candidates | java gradle maven sbt scala micronaut vertx visualvm (latest defaults) | `~/.sdkman/candidates` |
 | nvm and Node LTS | nvm v0.40.7 (sha256-pinned), `nvm install --lts`, default alias `lts/*` | `~/.nvm` |
-| pnpm | `get.pnpm.io` | `~/.local/share/pnpm` |
+| pnpm | `get.pnpm.io` (`PNPM_HOME=~/.local/share/pnpm`) | `~/.local/share/pnpm/bin` (pnpm 11+ layout) |
 | pyenv | `pyenv.run` (sha256-pinned) | `~/.pyenv` |
 | poetry / uv | Official installers | `~/.local/bin` |
 | Miniforge | Latest `Miniforge3-Linux-x86_64.sh`, batch mode | `~/.miniforge3` |
 | juliaup | `install.julialang.org` (sha256-pinned) | `~/.juliaup` |
-| kustomize / helm 4 | Upstream install scripts, no sudo | `~/.apps/{kustomize,helm}/bin` |
+| kustomize / helm 4 | Upstream install scripts, no sudo (helm's script needs its dir on PATH, which the step sets) | `~/.apps/{kustomize,helm}/bin` |
 | dotenvx | `dotenvx.sh` | `~/.local/bin` |
 
 `hx` is sitkevij's hex viewer, not Helix.
@@ -334,13 +352,14 @@ See [Docker instead of podman](#docker-instead-of-podman).
 oh-my-zsh (pinned revision and sha256), zsh-syntax-highlighting, zsh-autosuggestions, zsh-history-substring-search
 (pinned commits), TPM (pinned), starship (`~/.local/bin`), and **kitty** from the upstream installer
 (`~/.local/kitty.app`). kitty's desktop integration matches what I did by hand in bash: `kitty`/`kitten` links in
-`~/.local/bin`, and `.desktop` files with absolute `Icon`/`Exec` paths. The **ghostty** snap uses classic
-confinement. zsh itself comes from `base`, and the login shell change happens in `session`.
+`~/.local/bin`, and `.desktop` files with absolute `Icon`/`Exec` paths. kitty is also registered and selected as the
+`x-terminal-emulator` alternative (priority 60), which is what GNOME/GLib falls back to because `xdg-terminal-exec`
+is not installed. The **ghostty** snap uses classic confinement. zsh itself comes from `base`, and the login shell change happens in `session`.
 
 ### `desktop-apps`
 
 - **Flathub** remote (the descriptor is sha256-pinned; this is a no-op on Zorin, which already has it).
-- **Flatpaks** (54 in total, one leaf phase per group, `continueOnError`):
+- **Flatpaks** (55 in total, one leaf phase per group, `continueOnError`):
   - browsers: LibreWolf, Chrome, Zen
   - communication: Discord, Zulip, **Vesktop**
   - media: Spotify, Audacity, AudioTube, ncspot, Decibels, Amberol, G4Music
@@ -348,12 +367,16 @@ confinement. zsh itself comes from `base`, and the login shell change happens in
   - writing: TextPieces, Apostrophe, Bookup, Censor, Logseq
   - dev: Ptyxis, WezTerm, VSCodium
   - system: Extension Manager, Flatseal, Flatsweep, Warehouse, Resources, Refine, Mission Center, Gradia, List,
-    Authenticator, Polari, D-Spy, Rewaita, Emblem, Mozilla VPN, NetPeek, **GNOME Boxes**
+    Authenticator, Polari, D-Spy, Rewaita, Emblem, Mozilla VPN, NetPeek, **GNOME Boxes**, **Gear Lever**
   - productivity: Sessions, Blanket, Packet, LocalSend, NewsFlash, Dosage, Health
 - **Snaps**: `theia-ide` (classic) and `telegram-desktop`.
 - **AI CLIs**: Claude Code (`claude.ai/install.sh`), OpenAI Codex (`chatgpt.com/codex/install.sh`), and Kimi Code
   (`code.kimi.com`, run with bash, since running it with zsh failed on this host).
-- **Home-dir apps**: Zed (`zed.dev/install.sh`) and **Paseo** (AppImage in `~/Apps`, linked as `~/.local/bin/paseo`).
+- **Home-dir apps**: Zed (`zed.dev/install.sh`) and **Paseo**, in the layout Gear Lever gave it on this host:
+  `~/AppImages/paseo.appimage`, icon `~/AppImages/.icons/paseo` (extracted from the AppImage), launcher
+  `~/.local/share/applications/paseo.desktop` (`paseo://` URL handler, `StartupWMClass=Paseo`) and the
+  `~/.local/bin/paseo` link. An existing launcher is kept, and nothing is downloaded when the AppImage is already
+  there.
 
 Items in **bold** were found in this host's history or package logs. Several flatpaks come preinstalled with Zorin
 Pro, so installing them does nothing there.
@@ -364,6 +387,10 @@ Turns off dynamic workspaces and sets 9 workspaces. `Super+1..9` switches worksp
 window there. The default `switch-to-application-N` bindings are cleared, and screenshot UI is on `Super+Print` and
 `Print`. Zorin Taskbar's `hot-keys` setting is turned off because it grabs `Super+1..9`. The module has to run inside
 the logged-in GNOME session and asserts that `DBUS_SESSION_BUS_ADDRESS` is set.
+
+It also sets the dash/taskbar favourites to what I pinned by hand: Brave, Files, Software, Terminal, Vesktop,
+ChatGPT, Claude and Paseo (`org.gnome.shell favorite-apps`). `gnome` runs after `apps` and `desktop-apps`, so those
+`.desktop` IDs exist by then.
 
 ### `dotfiles` and `session`
 
@@ -417,13 +444,23 @@ That includes the oh-my-zsh template `~/.zshrc` and the empty `~/.config/ghostty
 | `~/.config/{starship.toml, alacritty/, kitty/kitty.conf, zathura/zathurarc}` | `dotfiles/` |
 | `~/.config/nvim` (AstroNvim, with `lazy-lock.json`) | `dotfiles/nvim` |
 | `~/.config/{btop, ghostty, zellij, lazygit, lsd, yazi, bottom}` | `dotfiles/.config/...` |
-| `~/.config/xdg-terminals.list` (kitty) and `~/.config/environment.d/90-session.conf` | `dotfiles/.config/...` |
+| `~/.config/{,zorin-,GNOME-}xdg-terminals.list` (all three: kitty) and `~/.config/environment.d/90-session.conf` | `dotfiles/.config/...` |
 | `~/.config/binstaller/config.yaml` | `config/binstaller.yaml` |
 | `~/.config/nerd-fonts-installer/config.yaml` | `config/nerd-fonts/all.yaml` |
 
-fluxion and your manual runs therefore **share the same config files**. `binstaller --config
-~/.config/binstaller/config.yaml` and `nerd-fonts-installer --config ~/.config/nerd-fonts-installer/config.yaml`
-read the repo's files.
+fluxion and your manual runs therefore **share the same config files**. Neither tool is put on PATH; fluxion keeps
+them in its cache. For a manual run:
+
+```bash
+fluxion tools install binstaller nerd-fonts-installer     # no-op when already cached
+~/.cache/fluxion/tools/binstaller/v0.2.0/binstaller apply --config ~/.config/binstaller/config.yaml
+~/.cache/fluxion/tools/nerd-fonts-installer/v1.0.7/nerd-fonts-installer --config ~/.config/nerd-fonts-installer/config.yaml
+```
+
+Zorin seeds `~/.config/zorin-xdg-terminals.list` and `~/.config/GNOME-xdg-terminals.list` with GNOME Terminal, and
+`xdg-terminal-exec` reads those desktop-specific lists before the generic one, so all three are linked to the same
+kitty file. `create:` gives explicit modes (0755, and 0700 for `~/.vim/undo-history`), because dotbot-go v0.4.2
+otherwise creates missing directories as 0777.
 
 The `.zshrc` changes compared with the Fedora version:
 
@@ -496,7 +533,10 @@ just validate                                   # or: scripts/validate-all.sh
   records it as succeeded, or when its probe reports it as present. Probes include `dpkg-query`, `flatpak info`,
   `snap list`, file existence checks and the `probeCommand` of each step.
 - A phase that completed with an unchanged fingerprint (a hash of its config, including delegated config files and
-  inline scripts) is skipped outright. When you change anything in a phase, it runs again.
+  inline scripts) is skipped outright. When you change anything in a phase, it is walked again, but with
+  `--skip-already-installed` each item whose probe passes is still skipped. For steps with a coarse probe (binstaller,
+  Nerd Fonts) use `just refresh-binaries` / `just refresh-fonts`, or run `fluxion apply ... --phase NAME` without
+  `--skip-already-installed`.
 - A failed phase is never recorded as complete, so the next run retries it.
 - Each module keeps its own state:
 
@@ -560,10 +600,10 @@ just validate                                   # or: scripts/validate-all.sh
    app*. Browsers create these web apps themselves, so they cannot be scripted in any sensible way.
 7. **Regional formats:** en_GB formats and A4 paper were set in *Settings → Region & Language*, which writes
    `~/.pam_environment`. Set them again there; the file is not managed here.
-8. **Optional: stale Claude keyring.** The host's original `claude-desktop.list` pointed at
-   `/usr/share/keyrings/claude-desktop-archive-keyring.asc`. The `apps` module rewrites the list to use a dearmored
-   `.gpg` keyring, so the old file is no longer used and can be removed:
-   `sudo rm /usr/share/keyrings/claude-desktop-archive-keyring.asc`.
+8. **Claude keyring `.asc`: leave it.** The `claude-desktop` package rewrites
+   `/usr/share/keyrings/claude-desktop-archive-keyring.asc` on every upgrade, so deleting it achieves nothing. It is
+   harmless: the `claude-desktop.list` written by `apps` has no package marker, so the package leaves it pointing at
+   the dearmored `.gpg`.
 9. **Optional: 1Password debsig policy.** Ubuntu's dpkg only enforces package signatures when `debsig-verify` is
    set up. To enable verification for 1Password:
 
@@ -630,10 +670,18 @@ just validate                                   # or: scripts/validate-all.sh
 rustup, juliaup, SDKMAN, nvm/Node LTS, mamba, uv, pnpm, Poetry, oh-my-zsh and, optionally, the cargo crates. Each section
 is skipped when its tool is missing, and one failure does not stop the rest.
 
-**`~/.apps` binaries:** edit the versions in `config/binstaller.yaml`, then run `./bootstrap.sh --only binaries`.
-The changed file changes the phase fingerprint, so the phase runs again. The `latest-url` tools only move when the
-phase re-runs. To force that: `fluxion state forget --profile binaries --phase binstaller && ./bootstrap.sh --only
-binaries`.
+**`~/.apps` binaries and Nerd Fonts:** `./bootstrap.sh --only binaries` does **not** refresh them. bootstrap.sh
+always passes `--skip-already-installed`, and in that mode fluxion skips an item whose probe passes, even when the
+phase's config changed. The binstaller probe passes as soon as all 13 executables exist, and each font probe passes
+once `fc-list` finds its family. Run the phases without that flag instead (no sudo needed):
+
+```bash
+just refresh-binaries   # fluxion apply -c profiles/40-binaries.yaml --profile binaries --phase binstaller --no-tui
+just refresh-fonts      # ... --phase fonts-core,fonts-more,fonts-rest,fonts-noto --no-tui
+```
+
+So to bump a tool, edit its version (and checksum) in `config/binstaller.yaml`, then run `just refresh-binaries`.
+The `latest-url` tools (minikube, xplr, kubectl, neovide, neovim, yq) move to the newest release on every refresh.
 
 **Bumping pins** (installer scripts, keys, tarballs). Most remote scripts and keys are pinned by sha256, and git
 repos by commit. When upstream changes them, fluxion fails with a digest mismatch, which is intended. To bump a pin:
@@ -647,11 +695,12 @@ Then edit the value in the profile and run `just validate`.
 
 | Pin | File |
 |---|---|
-| Go version and tarball sha256 (`go-toolchain` args) | `profiles/30-toolchains.yaml` |
+| Go version and tarball sha256 (`spec.vars`). **Also** change the literal `go1.27.1 ` in the `go-toolchain` probeCommand: probes cannot use `${...}`, and a stale probe re-downloads Go on every run | `profiles/30-toolchains.yaml` |
 | rustup, cargo-binstall script (commit and sha), SDKMAN, nvm tag and sha, pyenv, juliaup | `profiles/30-toolchains.yaml` |
 | oh-my-zsh revision and sha, zsh plugin commits, TPM commit | `profiles/50-shell.yaml` |
 | Docker / GitHub CLI / Claude Desktop key sha256; Microsoft / 1Password key fingerprints | `profiles/20-docker.yaml`, `profiles/10-apps.yaml` |
-| distrobox version and tarball sha256 (`spec.vars`) | `profiles/20-docker.yaml` |
+| distrobox version and tarball sha256 (`spec.vars`). **Also** change the literal `distrobox: 1.8.2.5` in the `docker-distrobox` probeCommand | `profiles/20-docker.yaml` |
+| Crystal OBS key sha256 (the key expires 2027-09-22) | `profiles/10-apps.yaml` |
 | Flathub descriptor sha256 | `profiles/60-desktop-apps.yaml`, `profiles/optional/obs.yaml`, `profiles/optional/zorin-pro-parity.yaml` |
 | binstaller tool versions | `config/binstaller.yaml` |
 | fluxion itself | `FLUXION_VERSION` in `bootstrap.sh`. Read the fluxion changelog before bumping it, because the caveats above are specific to 0.3.1 |
@@ -669,6 +718,17 @@ fluxion status  -c profiles/20-docker.yaml --profile docker --failed
 fluxion state show docker                                       # ~/.local/share/fluxion/state/docker.json
 ./bootstrap.sh --only docker --show-output --no-tui            # re-run, echoing each command's output
 ```
+
+**`apt-get update` fails with `crystal ... does not have a Release file` (exit 100):** the Crystal installer was
+piped to `sudo zsh`. zsh keeps the backslashes of `${OBS_PROJECT//:/:\/}`, so
+`/etc/apt/sources.list.d/crystal.list` contains `devel:\/languages:\/crystal` (a 404) and
+`/etc/apt/trusted.gpg.d/devel_languages_crystal.gpg` is empty. `base` moves both files to `/var/backups` first (phase
+`apt-sources-repair`) and `apps` adds the correct repo. To fix it by hand:
+`sudo rm -f /etc/apt/sources.list.d/crystal.list /etc/apt/trusted.gpg.d/devel_languages_crystal.gpg`. If you use
+that installer again, pipe it to `bash`, not `zsh`.
+
+**A module shows `ok` but nothing was installed:** with `--tui`, pressing `q` at the selector backs out of that module,
+and fluxion exits 0. Re-run it without `--tui`.
 
 **"a password is required" / sudo failures part-way:** the keep-alive loop stopped, for example because the
 terminal was closed or the machine suspended. Re-run the module, and finished items are skipped.

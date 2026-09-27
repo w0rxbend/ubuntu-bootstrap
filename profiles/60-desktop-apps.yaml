@@ -2,10 +2,12 @@
 #
 # GUI applications and user-level app installers:
 #   - flathub system remote (no-op on Zorin, which ships it)
-#   - 54 flatpaks from flathub, split into 8 independent category phases
+#   - 55 flatpaks from flathub, split into 8 independent category phases
 #   - snaps: theia-ide (classic) and telegram-desktop
 #   - AI CLIs: Claude Code, OpenAI Codex, Kimi Code
-#   - home-dir apps: Zed (zed.dev installer) and the Paseo AppImage (~/Apps, linked as ~/.local/bin/paseo)
+#   - home-dir apps: Zed (zed.dev installer) and the Paseo AppImage, laid out the way Gear Lever
+#     integrated it on this host (~/AppImages/paseo.appimage, icon in ~/AppImages/.icons, launcher
+#     ~/.local/share/applications/paseo.desktop with the paseo:// handler, ~/.local/bin/paseo link)
 #
 # Run alone:  ./bootstrap.sh --only desktop-apps
 #
@@ -16,7 +18,7 @@
 # Notes:
 #   - Every category is a leaf phase with continueOnError, so one broken app never blocks others.
 #   - Several IDs are Zorin OS Pro preinstalls; installing them again is a no-op.
-#   - org.gnome.Boxes and dev.vencord.Vesktop were installed by hand on this host.
+#   - org.gnome.Boxes, dev.vencord.Vesktop and it.mijorus.gearlever were installed by hand on this host.
 #   - Deliberately excluded: com.oguzhaninan.Stacer (gone from flathub; apt stacer in 00-base),
 #     com.brave.Browser (Brave comes from Zorin's apt repo), dev.zed.Zed (Zed comes from
 #     zed.dev/install.sh below), org.telegram.desktop (the telegram-desktop snap is used).
@@ -166,6 +168,7 @@ spec:
               - org.mozilla.vpn
               - io.github.zingytomato.netpeek
               - org.gnome.Boxes             # user install on this host
+              - it.mijorus.gearlever        # user install on this host (AppImage manager)
 
     - name: flatpak-productivity
       dependsOn: [host-check, flathub]
@@ -254,12 +257,59 @@ spec:
                 creates: ${HOME}/.local/zed.app/bin/zed
                 timeout: 10m
             probeCommand: "test -x $HOME/.local/zed.app/bin/zed"
+        # Same layout Gear Lever produced on this host, so Gear Lever keeps managing it and the
+        # paseo.desktop GNOME favourite (70-gnome) resolves. The probe matches the existing file,
+        # so no second copy is downloaded.
         - name: paseo
-          kind: commands
+          kind: shell-scripts
           spec:
-            commands:
+            shell: bash
+            scripts:
               - name: paseo-appimage
-                run: 'mkdir -p "$HOME/Apps" "$HOME/.local/bin" && curl -fL -o "$HOME/Apps/Paseo-x86_64.AppImage" https://github.com/getpaseo/paseo/releases/latest/download/Paseo-x86_64.AppImage && chmod +x "$HOME/Apps/Paseo-x86_64.AppImage" && ln -sfn "$HOME/Apps/Paseo-x86_64.AppImage" "$HOME/.local/bin/paseo"'
-                creates: ${HOME}/Apps/Paseo-x86_64.AppImage
                 timeout: 10m
-            probeCommand: "test -x $HOME/Apps/Paseo-x86_64.AppImage"
+                content: |
+                  set -euo pipefail
+                  dir="$HOME/AppImages"
+                  app="$dir/paseo.appimage"
+                  apps_dir="$HOME/.local/share/applications"
+                  mkdir -p "$dir/.icons" "$HOME/.local/bin" "$apps_dir"
+                  if [ ! -x "$app" ]; then
+                    curl -fL -o "$app.part" https://github.com/getpaseo/paseo/releases/latest/download/Paseo-x86_64.AppImage
+                    chmod +x "$app.part"
+                    mv -f "$app.part" "$app"
+                  fi
+                  ln -sfn "$app" "$HOME/.local/bin/paseo"
+                  # Icon: best effort, extracted from the AppImage (.DirIcon is a symlink inside it).
+                  if [ ! -s "$dir/.icons/paseo" ]; then
+                    tmp="$(mktemp -d)"
+                    trap 'rm --recursive --force "$tmp"' EXIT
+                    if (cd "$tmp" && "$app" --appimage-extract .DirIcon >/dev/null 2>&1); then
+                      target="$(readlink "$tmp/squashfs-root/.DirIcon" || true)"
+                      if [ -n "$target" ]; then
+                        (cd "$tmp" && "$app" --appimage-extract "$target" >/dev/null 2>&1) || true
+                      fi
+                      cp -L "$tmp/squashfs-root/.DirIcon" "$dir/.icons/paseo" 2>/dev/null || true
+                    fi
+                  fi
+                  icon="$dir/.icons/paseo"
+                  [ -s "$icon" ] || icon=paseo
+                  # An existing launcher (e.g. Gear Lever's, with its X-AppImage-* keys) is kept.
+                  if [ ! -f "$apps_dir/paseo.desktop" ]; then
+                  cat >"$apps_dir/paseo.desktop" <<EOF
+                  [Desktop Entry]
+                  Type=Application
+                  Name=Paseo
+                  Comment=Paseo desktop app (Electron wrapper)
+                  Icon=$icon
+                  TryExec=$app
+                  Exec=$app --class=Paseo %U
+                  Terminal=false
+                  MimeType=x-scheme-handler/paseo;
+                  Categories=Development;
+                  StartupWMClass=Paseo
+                  EOF
+                  fi
+                  if command -v update-desktop-database >/dev/null 2>&1; then
+                    update-desktop-database "$apps_dir" || true
+                  fi
+            probeCommand: "test -x $HOME/AppImages/paseo.appimage && test -f $HOME/.local/share/applications/paseo.desktop && test -e $HOME/.local/bin/paseo"

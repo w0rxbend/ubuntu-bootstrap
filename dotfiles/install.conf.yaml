@@ -16,12 +16,14 @@
     ~/.config:
       recursive: true
 
+# Explicit modes: dotbot-go v0.4.2 creates missing directories as 0777 otherwise.
 - create:
-    - ~/Downloads
-    - ~/Projects
-    - ~/Apps
-    - ~/.local/bin
-    - ~/.vim/undo-history
+    ~/Downloads: {mode: 0755}
+    ~/Projects: {mode: 0755}
+    ~/Apps: {mode: 0755}
+    ~/AppImages: {mode: 0755}
+    ~/.local/bin: {mode: 0755}
+    ~/.vim/undo-history: {mode: 0700}
 
 - shell:
     - command -v conda >/dev/null 2>&1 && conda config --set changeps1 False || true
@@ -52,7 +54,12 @@
     ~/.config/yazi/theme.toml: .config/yazi/theme.toml
     ~/.config/yazi/keymap.toml: .config/yazi/keymap.toml
     ~/.config/bottom/bottom.toml: .config/bottom/bottom.toml
+    # kitty as default terminal. xdg-terminal-exec reads the desktop-specific lists first
+    # (XDG_CURRENT_DESKTOP=zorin:GNOME), and Zorin seeds both with org.gnome.Terminal.desktop,
+    # so all three point at the same file. The x-terminal-emulator alternative is set in 50-shell.
     ~/.config/xdg-terminals.list: .config/xdg-terminals.list
+    ~/.config/zorin-xdg-terminals.list: .config/xdg-terminals.list
+    ~/.config/GNOME-xdg-terminals.list: .config/xdg-terminals.list
     ~/.config/environment.d/90-session.conf: .config/environment.d/90-session.conf
     ~/.config/binstaller/config.yaml: ../config/binstaller.yaml
     ~/.config/nerd-fonts-installer/config.yaml: ../config/nerd-fonts/all.yaml

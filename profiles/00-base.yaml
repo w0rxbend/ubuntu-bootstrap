@@ -6,6 +6,9 @@
 #   - debconf preseeds (mscorefonts EULA, wireshark setuid) so installs never hang
 #   - core, CLI, build, debug, GUI-dev, media, fonts/TeX, desktop and virtualization packages
 #   - bat -> batcat symlink, libvirtd service, global git identity, NTP clock
+#   - GPU tools picked by hardware (radeontop on AMD, intel-media-va-driver on Intel)
+#   - repairs the broken Crystal apt source left by `crystal-lang.org/install.sh | sudo zsh`
+#     (the proper Crystal repo is added by 10-apps)
 #
 # Run alone:   ./bootstrap.sh --only base
 # Caveats:
@@ -32,9 +35,42 @@ spec:
             command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
             message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
 
+    # Must run before anything calls `apt-get update`. On this host the Crystal installer was
+    # piped to zsh, which kept the backslashes of ${OBS_PROJECT//:/:\/}: crystal.list points at a
+    # URL that 404s and the trusted.gpg.d keyring is 0 bytes, so every `apt-get update` exits 100.
+    # Both files are moved to /var/backups here; 10-apps (phase crystal) writes a correct source
+    # and keyring.
+    - name: apt-sources-repair
+      description: "Move the broken Crystal apt source/keyring aside (no-op when absent or correct)"
+      dependsOn: [host-check]
+      execution: { continueOnError: false }
+      steps:
+        - name: base-crystal-source-repair
+          kind: shell-scripts
+          spec:
+            shell: bash
+            scripts:
+              - name: crystal-source-repair
+                sudo: true
+                timeout: 1m
+                content: |
+                  set -euo pipefail
+                  list=/etc/apt/sources.list.d/crystal.list
+                  key=/etc/apt/trusted.gpg.d/devel_languages_crystal.gpg
+                  # Moved aside (not deleted) to /var/backups, outside apt's source/keyring dirs.
+                  if [ -f "$list" ] && grep -qF '\/' "$list"; then
+                    echo "moving broken $list to /var/backups/crystal.list.broken:"; cat "$list"
+                    mv -f "$list" /var/backups/crystal.list.broken
+                  fi
+                  if [ -f "$key" ] && [ ! -s "$key" ]; then
+                    echo "moving empty keyring $key to /var/backups/"
+                    mv -f "$key" /var/backups/devel_languages_crystal.gpg.empty
+                  fi
+            probeCommand: '! grep -qsF ''\/'' /etc/apt/sources.list.d/crystal.list && ! { test -f /etc/apt/trusted.gpg.d/devel_languages_crystal.gpg && ! test -s /etc/apt/trusted.gpg.d/devel_languages_crystal.gpg; }'
+
     - name: system-upgrade
       description: "apt-get update + full-upgrade (declared first so it runs first in its wave)"
-      dependsOn: [host-check]
+      dependsOn: [host-check, apt-sources-repair]
       steps:
         - name: base-full-upgrade
           kind: system-update
@@ -45,7 +81,7 @@ spec:
 
     - name: apt-core
       description: "debconf preseeds and the core packages every other phase relies on"
-      dependsOn: [host-check]
+      dependsOn: [host-check, apt-sources-repair]
       execution: { continueOnError: false }
       steps:
         - name: base-debconf-preseed
@@ -80,6 +116,7 @@ spec:
               - software-properties-common
               - debconf-utils
               - apt-transport-https
+              - pciutils
 
     - name: apt-cli
       description: "Terminal tools (leaf)"
@@ -107,6 +144,8 @@ spec:
               - stress
               - zoxide
               - tig
+              - wev
+              - foot
               - mtr
               - nmap
               - httpie
@@ -240,7 +279,6 @@ spec:
       dependsOn: [host-check, apt-core]
       execution: { continueOnError: true }
       steps:
-        # radeontop: this host has an AMD RX 4xx/5xx GPU; the Intel VA driver is omitted on purpose.
         - name: base-media-packages
           kind: apt-packages
           spec:
@@ -268,7 +306,6 @@ spec:
               - vainfo
               - mesa-va-drivers
               - libvdpau-va-gl1
-              - radeontop
               - pipewire
               - pipewire-alsa
               - pipewire-pulse
@@ -277,6 +314,30 @@ spec:
               - easyeffects
               - power-profiles-daemon
               - upower
+        # GPU-specific tools, chosen by `lspci` like the old Fedora/Arch scripts:
+        # radeontop on AMD, intel-media-va-driver (iHD VA-API) on Intel. No-op otherwise.
+        - name: base-gpu-packages
+          kind: shell-scripts
+          spec:
+            shell: bash
+            scripts:
+              - name: gpu-packages
+                sudo: true
+                timeout: 15m
+                env: { DEBIAN_FRONTEND: noninteractive }
+                content: |
+                  set -euo pipefail
+                  gpus="$(lspci | grep -iE 'vga|3d controller|display controller' || true)"
+                  pkgs=""
+                  if grep -qi 'amd' <<<"$gpus"; then pkgs="$pkgs radeontop"; fi
+                  if grep -qi 'intel' <<<"$gpus"; then pkgs="$pkgs intel-media-va-driver"; fi
+                  if [ -z "$pkgs" ]; then
+                    echo "no AMD or Intel GPU found; nothing to install"
+                    exit 0
+                  fi
+                  # shellcheck disable=SC2086 # word splitting of the package list is intended
+                  apt-get install -y $pkgs
+            probeCommand: 'g="$(lspci | grep -iE ''vga|3d controller|display controller'')"; { ! echo "$g" | grep -qi amd || dpkg -s radeontop >/dev/null 2>&1; } && { ! echo "$g" | grep -qi intel || dpkg -s intel-media-va-driver >/dev/null 2>&1; }'
         # Own step so a failed mscorefonts download is obvious in the report.
         # The EULA is preseeded in apt-core (base-debconf-preseed).
         - name: base-restricted-extras
