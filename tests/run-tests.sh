@@ -236,9 +236,20 @@ if has_stage validate; then
     done
 fi
 
-# Evaluate a bootstrap --report file. $1 = stage, $2 = report, $3 = 1 when nothing may have run
+# Items of module $1 that ran ("✔ ok") in bootstrap log $2, minus those that run on every --re-probe by design
+# (assert steps and package pre-install actions, see `profile_query.py probeless`). One key per line.
+reprobe_ran_items() {
+    local m="$1" log="$2" probeless
+    probeless="$(python3 tests/lib/profile_query.py "$(module_file "$m")" probeless)"
+    sed 's/\x1b\[[0-9;]*m//g' "$log" |
+        awk -v n="$m" '/^━━━ / { on = ($2 == n); next } on && /▸ .* \.\.\. ✔ ok/ { sub(/^ *▸ /, ""); sub(/ \.\.\. ✔ ok.*$/, ""); print }' |
+        grep -vxF -f <(printf '%s\n' "$probeless") || true
+}
+
+# Evaluate a bootstrap --report file. $1 = stage, $2 = report, $3 = 1 when nothing may have run,
+# $4 = the bootstrap log (strict --re-probe mode: only items with a real probe count as "ran again")
 evaluate_report() {
-    local stage="$1" report="$2" strict_zero="$3" m line rc note ok failed
+    local stage="$1" report="$2" strict_zero="$3" log="${4:-}" m line rc note ok failed ran
     for m in "${MODULES[@]}"; do
         line="$(awk -F'\t' -v n="$m" '$1 == n' "$report" 2>/dev/null | tail -n1)"
         if [[ -z "$line" ]]; then
@@ -246,10 +257,16 @@ evaluate_report() {
             continue
         fi
         IFS=$'\t' read -r _ rc note _ ok failed _ _ <<<"$line"
+        if [[ "$strict_zero" == 1 && -n "$log" ]]; then
+            ran="$(reprobe_ran_items "$m" "$log" | wc -l)"
+            [[ "$ran" -eq 0 ]] || reprobe_ran_items "$m" "$log" >"$LOG_DIR/reprobe-ran-$m.txt"
+        else
+            ran="$ok"
+        fi
         if [[ "$rc" != 0 ]]; then
             mark "$m" "$stage" FAIL "rc=$rc $note, $failed failed"
-        elif [[ "$strict_zero" == 1 && "$ok" != 0 ]]; then
-            mark "$m" "$stage" FAIL "$ok item(s) ran again"
+        elif [[ "$strict_zero" == 1 && "$ran" != 0 ]]; then
+            mark "$m" "$stage" FAIL "$ran item(s) ran again"
         else
             mark "$m" "$stage" ok "$ok ok, $failed failed"
         fi
@@ -276,7 +293,11 @@ if has_stage idempotency; then
     : >"$LOG_DIR/idempotency.tsv"
     ./bootstrap.sh --test --only "$ONLY_CSV" --no-tui "${extra[@]}" --report "$LOG_DIR/idempotency.tsv" 2>&1 |
         tee "$LOG_DIR/idempotency.log" || true
-    evaluate_report idempotency "$LOG_DIR/idempotency.tsv" 1
+    if [[ $STRICT -eq 1 ]]; then
+        evaluate_report idempotency "$LOG_DIR/idempotency.tsv" 1 "$LOG_DIR/idempotency.log"
+    else
+        evaluate_report idempotency "$LOG_DIR/idempotency.tsv" 1
+    fi
 fi
 
 if has_stage assert; then

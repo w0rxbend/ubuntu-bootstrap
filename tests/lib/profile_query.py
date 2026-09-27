@@ -9,6 +9,8 @@ Usage: profile_query.py PROFILE QUERY
   crates         one crate per line (tool-packages with backend cargo-binstall)
   sdkman         one candidate per line (sdkman-packages)
   pipx           one package per line (tool-packages with backend pipx)
+  probeless      item keys that run on every --re-probe by design: `assert` steps (a check, not a change)
+                 and the pre-install `actions` of package steps (e.g. apt `update`, shown as action[N])
 """
 
 import os
@@ -64,6 +66,11 @@ def main(path, query):
             out += names(spec.get("packages"))
         elif query == "pipx" and kind == "tool-packages" and spec.get("backend") == "pipx":
             out += names(spec.get("packages"))
+        elif query == "probeless":
+            if kind == "assert":
+                out.append(step.get("name", ""))
+            for i, _ in enumerate(spec.get("actions") or []):
+                out.append(f"action[{i}]")
         elif query == "sdkman" and kind == "sdkman-packages":
             out += names(spec.get("packages"), key="candidate")
     seen = set()

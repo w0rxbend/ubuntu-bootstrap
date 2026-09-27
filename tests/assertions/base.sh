@@ -33,7 +33,17 @@ assert_base() {
     check_sh "wireshark setuid preseeded to false" "debconf-show wireshark-common 2>/dev/null | grep -q 'install-setuid: false'"
 
     section "services and system settings"
-    assert_unit libvirtd
+    # libvirtd.service is socket-activated and exits after 120 s idle: assert the socket, the service's
+    # enablement, and that a client connection really reaches the daemon (which starts it on demand).
+    assert_unit libvirtd.socket
+    if has_systemd; then
+        check_sh "libvirtd.service enabled" 'test "$(systemctl is-enabled libvirtd.service)" = enabled'
+        if can_sudo; then
+            check "virsh reaches qemu:///system (socket-activates libvirtd)" sudo -n virsh -c qemu:///system version
+        else
+            skip "virsh -c qemu:///system version" "needs sudo -n"
+        fi
+    fi
     if has_systemd; then
         check_sh "NTP enabled" 'timedatectl show -p NTP --value | grep -qx yes'
         check_sh "RTC in UTC" 'timedatectl show -p LocalRTC --value | grep -qx no'

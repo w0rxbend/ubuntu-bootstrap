@@ -315,7 +315,7 @@ The profile files have the exact spec for each item. This section is a quick sum
 | fonts / TeX | fonts-firacode fonts-font-awesome fonts-noto-core fonts-noto-color-emoji fonts-roboto, texlive-base/latex-base/latex-recommended/fonts-recommended/xetex |
 | desktop | gnome-tweaks, shell-extension prefs and extensions, gnome-browser-connector, xdg-desktop-portal-gtk, gnome-keyring, libpam-gnome-keyring, seahorse, gcr, gcr4, zathura (+pdf-poppler), mupdf |
 | GPU (by `lspci`, as in the old scripts) | `radeontop` when an AMD GPU is present, `intel-media-va-driver` (iHD VA-API) when an Intel GPU is present; nothing otherwise |
-| virt | qemu-system-x86 qemu-utils ovmf libvirt-daemon-system libvirt-clients virtinst virt-manager bridge-utils dnsmasq-base vde2 netcat-openbsd cpu-checker, plus `libvirtd` enabled and started |
+| virt | qemu-system-x86 qemu-utils ovmf libvirt-daemon-system libvirt-clients virtinst virt-manager bridge-utils dnsmasq-base vde2 netcat-openbsd cpu-checker, plus `libvirtd.socket` enabled and listening (`libvirtd.service` enabled; it is socket-activated and exits after 120 s idle) |
 | config | git `user.email`, `user.name` = w0rxbend, `pull.rebase=true`, `init.defaultBranch=main`, `core.autocrlf=input`; NTP on and RTC in UTC; `~/.local/bin/bat` pointing to `batcat` |
 
 Before anything runs `apt-get update`, the `apt-sources-repair` phase moves aside the broken Crystal source this host got
@@ -637,7 +637,7 @@ described in the profile header.
 |---|---|
 | `validate` | `fluxion validate --strict` + lint of each selected test profile, and `bootstrap.sh --test --dry-run` exits 0 with no checkpoint |
 | `apply` | `bootstrap.sh --test --only MODULES` exits 0 for every module |
-| `idempotency` | The same run again: every module exits 0 and fluxion's summary reports **`0 ok · 0 failed`** (nothing ran). `--strict-idempotency` adds `--re-probe`, so recorded state is ignored and every item must be satisfied by its live probe |
+| `idempotency` | The same run again: every module exits 0 and fluxion's summary reports **`0 ok · 0 failed`** (nothing ran). `--strict-idempotency` adds `--re-probe`, so recorded state is ignored and every item must be satisfied by its live probe. Items with no probe by design (`assert` steps, and package `actions` such as apt `update`) always run and are not counted; the items that did run again are listed in `reprobe-ran-MODULE.txt` in the log dir |
 | `assert` | `tests/assertions/MODULE.sh`: the real outcome. Packages from the profile's own lists, commands at their pinned versions, apt sources and keyrings, docker/containerd active and `docker run --rm hello-world` (with `sudo -n` until the docker group is active), `~/.system-bootstrap` clone and pushurl, every dotbot link resolving into the clone or this repo, skills links + the name check, an interactive zsh finding claude/codex/kimi, gsettings for `Super+1..9` (plus a scan for any other holder), `Super+D` -> vicinae and show-desktop, the vicinae user service and `ping`, login shell and group membership in `/etc/group` |
 
 ```bash

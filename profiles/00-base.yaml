@@ -428,12 +428,16 @@ spec:
               - vde2
               - netcat-openbsd
               - cpu-checker
+        # Ubuntu's libvirtd is socket-activated and exits after 120 s idle (LIBVIRTD_ARGS="--timeout 120"),
+        # so "libvirtd.service started" is only true for two minutes and a re-probe would restart it every
+        # run. The socket is what must be listening; the service is only enabled and started on demand.
         - name: base-libvirtd
           kind: systemd-unit
           spec:
             scope: system
             units:
-              - { name: libvirtd, enabled: true, state: started }
+              - { name: libvirtd.socket, enabled: true, state: started }
+              - { name: libvirtd, enabled: true, state: unchanged }
 
     - name: config
       description: "Global git identity/defaults and clock settings (git and timedatectl ship with Zorin)"
@@ -455,3 +459,5 @@ spec:
           spec:
             ntp: true
             localRtc: false
+            # fluxion has no built-in probe for system-setting items; without this a --re-probe run sets both again.
+            probeCommand: "timedatectl show -p NTP --value | grep -qx yes && timedatectl show -p LocalRTC --value | grep -qx no"
