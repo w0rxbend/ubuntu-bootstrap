@@ -76,7 +76,7 @@ spec:
       execution: { continueOnError: true }
       steps:
         # No probeCommand on purpose: a single probe would skip all 14 items.
-        # Reruns are handled by fluxion state + --skip-already-installed.
+        # fluxion probes each crate itself from `cargo install --list` (needs ~/.cargo/bin on PATH, which bootstrap.sh sets).
         # Note: `hx` is sitkevij's hex viewer, not the helix editor.
         # `fd-find` installs the `fd` binary (apt fd-find is intentionally not used).
         # ripgrep is NOT listed: the apt package (00-base apt-cli) provides a system-wide rg.

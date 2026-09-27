@@ -37,3 +37,4 @@ known_hosts
 # tests/gen-test-profiles.sh) and run logs.
 /tests/generated/
 /tests/logs/
+__pycache__/
