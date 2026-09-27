@@ -78,9 +78,12 @@ spec:
             packageManager: apt
             distUpgrade: true
             timeout: PT1H
-            # Satisfied when a simulated full-upgrade (against the current package lists) has nothing to do,
-            # so a --re-probe run does not upgrade again.
-            probeCommand: "apt-get -s -o Debug::NoLocking=1 dist-upgrade 2>/dev/null | grep -q '^0 upgraded, 0 newly installed, 0 to remove'"
+            # Satisfied when the package lists were updated in the last 6 h (the stamp that
+            # update-notifier-common's 15update-stamp touches, as in apt-core) AND a simulated full-upgrade
+            # against them has nothing to do, so a --re-probe run does not upgrade again. Without the stamp
+            # test, stale or missing lists (a fresh install, a container image) simulate "0 upgraded" and the
+            # upgrade was skipped on exactly the machines that need it.
+            probeCommand: "test -n \"$(find /var/lib/apt/periodic/update-success-stamp -mmin -360 2>/dev/null)\" && apt-get -s -o Debug::NoLocking=1 dist-upgrade 2>/dev/null | grep -q '^0 upgraded, 0 newly installed, 0 to remove'"
 
     - name: apt-core
       description: "debconf preseeds and the core packages every other phase relies on"
@@ -444,8 +447,10 @@ spec:
               - { name: libvirtd, enabled: true, state: unchanged }
 
     - name: config
-      description: "Global git identity/defaults and clock settings (git and timedatectl ship with Zorin)"
-      dependsOn: [host-check]
+      # git does NOT ship with Zorin OS 18 (not in its install manifest; the README quick start installs it), so
+      # this waits for apt-core, which installs it. timedatectl (systemd) does ship with Zorin.
+      description: "Global git identity/defaults and clock settings (git from apt-core; timedatectl ships with Zorin)"
+      dependsOn: [host-check, apt-core]
       steps:
         - name: base-git-config
           kind: git-config
