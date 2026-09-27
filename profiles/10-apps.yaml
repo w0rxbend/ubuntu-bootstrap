@@ -10,13 +10,16 @@
 # Run alone:   ./bootstrap.sh --only apps
 # Caveats:
 #   - gh and claude-desktop use apt-repository and write the SAME .list files that already
-#     exist on this host. fluxion's apt-repository probe only checks that the .list exists, so an
-#     existing file is never overwritten; apps-claude-desktop-source-adopt therefore first moves a
-#     claude-desktop.list that differs from the declared one (e.g. the vendor's `signed-by=...asc`
-#     line) to /var/backups/, and the repo step then writes the declared file. Fluxion always
-#     `gpg --dearmor`s keys, therefore the claude-desktop keyring is a .gpg file. The package's
-#     postinst still rewrites /usr/share/keyrings/claude-desktop-archive-keyring.asc on every
-#     install/upgrade; that file is harmless. Our claude-desktop.list has no
+#     exist on this host. With the patched fluxion (fix/zorin-bootstrap, f992d37) the
+#     apt-repository probe compares the .list with the declared `source` line and requires a
+#     non-empty keyring, so a hand-written/vendor claude-desktop.list (the postinst's
+#     `signed-by=...asc` line) is rewritten to the declared one. fluxion 0.3.1 only checks that
+#     the .list exists: run the patched build once with --re-probe on a host that already has a
+#     vendor claude-desktop.list. Fluxion always `gpg --dearmor`s keys, therefore the
+#     claude-desktop keyring is a .gpg file; apps-claude-desktop-key pins its fingerprint (the
+#     patched gpg-key probe checks it). The package's postinst still rewrites
+#     /usr/share/keyrings/claude-desktop-archive-keyring.asc on every install/upgrade; that file
+#     is harmless. Our claude-desktop.list has no
 #     "### Managed by the claude-desktop package." marker, so the postinst leaves it alone and
 #     it keeps pointing at the dearmored .gpg.
 #   - VS Code and 1Password keep their vendor deb822 .sources files (their package postinst
@@ -79,29 +82,13 @@ spec:
       dependsOn: [host-check]
       execution: { continueOnError: false }
       steps:
-        # fluxion's apt-repository probe only checks that sourceList exists (not its content, not the keyring),
-        # so a claude-desktop.list written by hand or by the package (signed-by the postinst's .asc) would count
-        # as done forever and the declared source/keyring would never be written. Move such a file aside first.
-        - name: apps-claude-desktop-source-adopt
-          kind: shell-scripts
-          description: "Move a claude-desktop.list that is not the declared source aside (no-op when absent or correct)"
+        - name: apps-claude-desktop-key
+          kind: gpg-key
           spec:
-            shell: bash
-            scripts:
-              - name: claude-desktop-source-adopt
-                sudo: true
-                timeout: 1m
-                content: |
-                  set -euo pipefail
-                  list=/etc/apt/sources.list.d/claude-desktop.list
-                  key=/usr/share/keyrings/claude-desktop-archive-keyring.gpg
-                  want='deb [arch=amd64 signed-by=/usr/share/keyrings/claude-desktop-archive-keyring.gpg] https://downloads.claude.ai/claude-desktop/apt/stable stable main'
-                  if [ -e "$list" ] && ! { [ "$(cat "$list")" = "$want" ] && [ -s "$key" ]; }; then
-                    dest="/var/backups/claude-desktop.list.replaced-$(date +%Y%m%d%H%M%S)"
-                    echo "moving $list (not the declared source) to $dest:"; cat "$list"
-                    mv -f "$list" "$dest"
-                  fi
-            probeCommand: '! test -e /etc/apt/sources.list.d/claude-desktop.list || { test "$(cat /etc/apt/sources.list.d/claude-desktop.list)" = "deb [arch=amd64 signed-by=/usr/share/keyrings/claude-desktop-archive-keyring.gpg] https://downloads.claude.ai/claude-desktop/apt/stable stable main" && test -s /usr/share/keyrings/claude-desktop-archive-keyring.gpg; }'
+            keys:
+              - url: https://downloads.claude.ai/claude-desktop/key.asc
+                fingerprint: 31DDDE24DDFAB679F42D7BD2BAA929FF1A7ECACE
+                keyring: /usr/share/keyrings/claude-desktop-archive-keyring.gpg
         - name: apps-claude-desktop-repo
           kind: apt-repository
           spec:
