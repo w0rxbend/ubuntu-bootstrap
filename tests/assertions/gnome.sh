@@ -47,7 +47,7 @@ _gnome_live_super_n() {
 assert_gnome() {
     ASSERT_MODULE=gnome
     if ! has_gui; then
-        skip "all gnome checks" "no GNOME session bus"
+        no_gui "gnome checks (workspaces, Super+N, favourites)"
         return
     fi
     section "workspaces"

@@ -68,6 +68,32 @@ has_gui() { ! in_container && [[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]] && comman
 has_systemd() { ! in_container && [[ -d /run/systemd/system ]]; }
 has_user_systemd() { has_systemd && systemctl --user show-environment >/dev/null 2>&1; }
 
+# no_gui LABEL  - report checks that need the GNOME session bus when there is none. In a container that is
+# expected (skip). On the host it means the assertions run outside the desktop session (SSH, cron, `env -u
+# DBUS_SESSION_BUS_ADDRESS`), where they would check nothing, so it is a failure: a GUI module must never pass
+# with zero checks. Run them from a terminal in the logged-in GNOME session.
+no_gui() {
+    if in_container; then
+        skip "$1" "no GNOME session bus in the container"
+    else
+        _a_fail "$1" "no GNOME session bus (DBUS_SESSION_BUS_ADDRESS unset): run the assertions from a terminal in the GNOME session"
+    fi
+}
+
+# dpkg_installed PKG  - dpkg's ${Status} is "want flag state": installed with flag ok, wanted install or hold
+# (a package pinned with `apt-mark hold` reads "hold ok installed")
+dpkg_installed() {
+    [[ "$(dpkg-query -W -f='${Status}' "$1" 2>/dev/null)" =~ ^(install|hold)\ ok\ installed$ ]]
+}
+
+# no_items LABEL COUNT  - a list helper got nothing to check. profile_query.py returns nothing when a profile's
+# keys or shape change, and a check over zero items would pass silently, so that is a failure.
+no_items() {
+    [[ "$2" -gt 0 ]] && return 1
+    _a_fail "$1: the item list is empty" "profile_query.py returned no items (did the profile's keys or shape change?)"
+    return 0
+}
+
 # Root-only checks: fluxion's `sudo -n` model, so a missing sudo ticket is a skip, not a failure.
 can_sudo() { sudo -n true 2>/dev/null; }
 
@@ -120,12 +146,13 @@ assert_exec() {
     fi
 }
 
-# assert_pkgs PKG...  - dpkg says "install ok installed" for every package (one line per missing package)
+# assert_pkgs LABEL PKG...  - dpkg says every package is installed (one line per missing package)
 assert_pkgs() {
     local label="$1" p missing=()
     shift
+    no_items "$label" $# && return
     for p in "$@"; do
-        [[ "$(dpkg-query -W -f='${Status}' "$p" 2>/dev/null)" == "install ok installed" ]] || missing+=("$p")
+        dpkg_installed "$p" || missing+=("$p")
     done
     if [[ ${#missing[@]} -eq 0 ]]; then
         _a_ok "$label: $# apt package(s) installed"
@@ -139,7 +166,7 @@ assert_no_pkgs() {
     local label="$1" p present=()
     shift
     for p in "$@"; do
-        [[ "$(dpkg-query -W -f='${Status}' "$p" 2>/dev/null)" == "install ok installed" ]] && present+=("$p")
+        dpkg_installed "$p" && present+=("$p")
     done
     if [[ ${#present[@]} -eq 0 ]]; then
         _a_ok "$label"
@@ -154,6 +181,7 @@ assert_no_pkgs() {
 assert_flatpaks() {
     local label="$1" id missing=()
     shift
+    no_items "$label" $# && return
     if in_container || ! command -v flatpak >/dev/null 2>&1; then
         skip "$label: $# flatpak(s)" "no flatpak here"
         return
@@ -172,6 +200,7 @@ assert_flatpaks() {
 assert_snaps() {
     local label="$1" s missing=()
     shift
+    no_items "$label" $# && return
     if in_container || ! command -v snap >/dev/null 2>&1; then
         skip "$label" "no snapd here"
         return
@@ -204,7 +233,7 @@ assert_link() {
 assert_gsetting() {
     local schema="$1" key="$2" want="$3" got
     if ! has_gui; then
-        skip "gsettings $schema $key" "no GNOME session bus"
+        no_gui "gsettings $schema $key"
         return
     fi
     got="$(gsettings get "$schema" "$key" 2>&1)" || true

@@ -29,7 +29,7 @@ assert_post_checks() {
     section "login shell, fonts, editor"
     check_sh "login shell is zsh" 'getent passwd "$USER" | grep -q "/zsh$"'
     check_sh "VictorMono Nerd Font known to fontconfig" "fc-list | grep -qi 'VictorMono Nerd'"
-    check_sh "nvim runs" 'command -v nvim >/dev/null && nvim --version | head -n1'
+    check_sh "nvim runs" 'nvim --version >/dev/null'
 
     section "Vicinae"
     if has_user_systemd; then
@@ -46,6 +46,8 @@ assert_post_checks() {
         else
             skip "extension loaded by the running shell" "becomes ACTIVE after the next log out/in"
         fi
+    else
+        no_gui "extension enabled in org.gnome.shell"
     fi
 }
 

@@ -11,7 +11,12 @@
 #   idempotency  the same again: every module must exit 0 and nothing may run but its `assert` steps (fluxion
 #                re-checks those on every run)
 #   assert       tests/assertions/MODULE.sh: the real outcome (binaries + versions, repos, links, gsettings,
-#                services, docker run, skills, login shell, groups)
+#                services, docker run, skills, login shell, groups). On the host, a check that needs the GNOME
+#                session bus FAILS when there is none (run from the desktop session, not SSH/cron)
+#   prod-status  read-only: what the tests cannot run. For every production-only part the generator removed
+#                (tests/generated/production-only.tsv: manual reminders, the logout checkpoint) it reports the live
+#                status from the PRODUCTION profile and state (`fluxion status`): done, pending (with the reason),
+#                or not exercised. Pending is reported, not failed: those are the user's manual steps
 #
 #   tests/run-tests.sh                         # all default modules, all stages
 #   tests/run-tests.sh --only gnome,vicinae    # a subset (optional modules by name too)
@@ -22,9 +27,12 @@
 #   tests/run-tests.sh --container             # non-GUI modules inside a throwaway ubuntu:24.04 container
 #   tests/run-tests.sh --list                  # modules, their test profiles, and whether they need the GUI
 #
-# Options: --log-dir DIR (default tests/logs/<timestamp>, git-ignored), --no-color.
-# Environment: FLUXION_BIN (default: the patched dev build ~/Projects/Github/fluxion.cr-zorin-fixes/bin/fluxion
-# when it exists, else fluxion on PATH / ~/.local/bin/fluxion), ASSERT_NETWORK=0 (skip network checks).
+# Options: --log-dir DIR (default tests/logs/<timestamp>, git-ignored), --no-color,
+#          --require-prod-bin (fail when FLUXION_BIN differs from the binary a plain ./bootstrap.sh would run).
+# fluxion: resolved by scripts/lib/fluxion-bin.sh, the same resolver bootstrap.sh uses ($FLUXION_BIN, else the
+# git-ignored fluxion-bin.local written by `just use-fluxion PATH`, else fluxion on PATH), so the tests run the
+# production binary. It must carry the fluxion.cr fix/zorin-bootstrap fixes (README: "fluxion.cr patches").
+# Environment: FLUXION_BIN, ASSERT_NETWORK=0 (skip network checks).
 # Exit status: 0 when every stage of every module passed, 1 otherwise, 2 for bad arguments.
 set -euo pipefail
 
@@ -67,7 +75,8 @@ generated_path() { printf 'tests/generated/%s' "$(module_file "$1" | sed 's|^pro
 # ---- arguments ------------------------------------------------------------------------------------------------
 ONLY=''
 WITH_OPTIONAL=0
-STAGES='validate,apply,idempotency,assert'
+STAGES='validate,apply,idempotency,assert,prod-status'
+REQUIRE_PROD_BIN=0
 STRICT=0
 CONTAINER=0
 IN_CONTAINER=0
@@ -98,6 +107,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         --log-dir=*) LOG_DIR="${1#--log-dir=}" ;;
         --no-color) B='' G='' R='' Y='' D='' N='' ;;
+        --require-prod-bin) REQUIRE_PROD_BIN=1 ;;
         --list)
             printf '%-18s %-9s %-4s %s\n' module kind gui "generated test profile"
             while IFS=$'\t' read -r n f k; do
@@ -107,7 +117,7 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         -h | --help)
-            sed -n '2,30p' "$0" | sed 's/^# \{0,1\}//'
+            sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'
             exit 0
             ;;
         *) die "unknown argument: $1 (see --help)" ;;
@@ -116,7 +126,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 for s in ${STAGES//,/ }; do
-    case "$s" in validate | apply | idempotency | assert) ;; *) die "unknown stage '$s'" ;; esac
+    case "$s" in validate | apply | idempotency | assert | prod-status) ;; *) die "unknown stage '$s'" ;; esac
 done
 has_stage() { [[ ",$STAGES," == *",$1,"* ]]; }
 
@@ -144,16 +154,32 @@ ONLY_CSV="$(
 )"
 
 # ---- fluxion binary -------------------------------------------------------------------------------------------
-if [[ -z "${FLUXION_BIN:-}" ]]; then
-    for cand in "$HOME/Projects/Github/fluxion.cr-zorin-fixes/bin/fluxion" "$(command -v fluxion || true)" "$HOME/.local/bin/fluxion"; do
-        if [[ -n "$cand" && -x "$cand" ]]; then
-            FLUXION_BIN="$cand"
-            break
-        fi
-    done
-fi
-[[ -n "${FLUXION_BIN:-}" && -x "$FLUXION_BIN" ]] || die "no fluxion found; set FLUXION_BIN"
+# One resolver for tests and production (scripts/lib/fluxion-bin.sh), so a green run covers the binary a real
+# bootstrap runs. Only an explicit FLUXION_BIN can make them differ; that is reported (or fails with
+# --require-prod-bin), because a plain ./bootstrap.sh would then run something else.
+# shellcheck source=scripts/lib/fluxion-bin.sh
+source "$REPO_DIR/scripts/lib/fluxion-bin.sh"
+PATH="$HOME/.local/bin:$PATH" fluxion_resolve "$REPO_DIR"
+FLUXION_BIN="$FLUXION_RESOLVED"
+FLUXION_BIN_FROM="$FLUXION_BIN_SOURCE"
+[[ -n "$FLUXION_BIN" && -x "$FLUXION_BIN" ]] || die "no fluxion found; see README.md \"fluxion.cr patches\" (just use-fluxion PATH)"
 export FLUXION_BIN
+PROD_BIN_NOTE=''
+if [[ "$FLUXION_BIN_FROM" == env ]]; then
+    FLUXION_BIN='' PATH="$HOME/.local/bin:$PATH" fluxion_resolve "$REPO_DIR"
+    if [[ "$(readlink -f -- "$FLUXION_RESOLVED" 2>/dev/null)" != "$(readlink -f -- "$FLUXION_BIN")" ]]; then
+        PROD_BIN_NOTE="FLUXION_BIN=$FLUXION_BIN, but a plain ./bootstrap.sh would run ${FLUXION_RESOLVED:-<none: it installs the release>} ($FLUXION_BIN_SOURCE)"
+        [[ $REQUIRE_PROD_BIN -eq 1 ]] && die "$PROD_BIN_NOTE"
+    fi
+fi
+if ! capable_why="$(fluxion_check_capable "$FLUXION_BIN")"; then
+    if [[ "${FLUXION_ALLOW_UNPATCHED:-0}" != 1 ]]; then
+        printf '%serror%s %s\n' "$R" "$N" "$capable_why" >&2
+        fluxion_help_capable >&2
+        exit 2
+    fi
+    PROD_BIN_NOTE="${PROD_BIN_NOTE:+$PROD_BIN_NOTE; }$capable_why (FLUXION_ALLOW_UNPATCHED=1)"
+fi
 
 LOG_DIR="${LOG_DIR:-$REPO_DIR/tests/logs/$(date +%Y%m%d-%H%M%S)}"
 mkdir -p "$LOG_DIR"
@@ -219,7 +245,8 @@ mark() {
     return 0
 }
 
-say "fluxion: $("$FLUXION_BIN" --version 2>/dev/null) ($FLUXION_BIN)"
+say "fluxion: $("$FLUXION_BIN" --version 2>/dev/null) ($FLUXION_BIN, from $FLUXION_BIN_FROM; binstaller pin v$(fluxion_binstaller_pin "$FLUXION_BIN"))"
+[[ -z "$PROD_BIN_NOTE" ]] || printf '%swarn%s %s\n' "$Y" "$N" "$PROD_BIN_NOTE" >&2
 say "modules: ${MODULES[*]}"
 say "stages:  $STAGES$([[ $STRICT -eq 1 ]] && echo ' (strict idempotency: --re-probe)')"
 say "logs:    $LOG_DIR"
@@ -351,6 +378,61 @@ if has_stage assert; then
     done
 fi
 
+# Production-only parts: what the generator removed from the test profiles. Read-only: `fluxion status` on the
+# PRODUCTION profile with the PRODUCTION state name, so it shows where the real bootstrap stands.
+PROD_ONLY=()
+if has_stage prod-status; then
+    say "stage prod-status: production-only parts (tests/generated/production-only.tsv)"
+    for m in "${MODULES[@]}"; do
+        f="$(module_file "$m")"
+        rows="$(awk -F'\t' -v f="$f" '$1 == f' tests/generated/production-only.tsv)"
+        if [[ -z "$rows" ]]; then
+            mark "$m" prod-status ok "none: tested 1:1"
+            continue
+        fi
+        if [[ "${TEST_CONTEXT:-}" == container ]]; then
+            mark "$m" prod-status skip "not in the container"
+            continue
+        fi
+        json="$LOG_DIR/prod-status-$m.json"
+        if ! "$FLUXION_BIN" status -c "$f" --profile "$m" --format json --no-tui >"$json" 2>"$LOG_DIR/prod-status-$m.err"; then
+            mark "$m" prod-status FAIL "fluxion status failed (prod-status-$m.err)"
+            continue
+        fi
+        done_n=0 pending_n=0 other_n=0
+        while IFS=$'\t' read -r _ phase step what; do
+            if [[ "$step" == - ]]; then
+                other_n=$((other_n + 1))
+                PROD_ONLY+=("$m: phase $phase $what: not exercised by the tests (production stops there for a log out/in)")
+                continue
+            fi
+            # status from fluxion; the reason shown is the step's own `message` (what the user has to do)
+            line="$(python3 -c 'import json, sys, yaml
+d = json.load(open(sys.argv[1]))
+msg = ""
+for phase in yaml.safe_load(open(sys.argv[3]))["spec"]["phases"]:
+    for st in phase.get("steps") or []:
+        if st.get("name") == sys.argv[2]:
+            msg = (st.get("spec") or {}).get("message") or ""
+for i in d.get("items", []):
+    if i.get("step") == sys.argv[2]:
+        print(i.get("status", "?") + "\t" + (msg or i.get("detail") or ""))
+        break
+else:
+    print("absent\tnot in the production status")' "$json" "$step" "$f")"
+            st="${line%%$'\t'*}" detail="${line#*$'\t'}"
+            if [[ "$st" == installed* ]]; then
+                done_n=$((done_n + 1))
+                PROD_ONLY+=("$m: $step ($what): done")
+            else
+                pending_n=$((pending_n + 1))
+                PROD_ONLY+=("$m: $step ($what): PENDING ($st): $detail")
+            fi
+        done <<<"$rows"
+        mark "$m" prod-status ok "$done_n done, $pending_n pending, $other_n n/a"
+    done
+fi
+
 # ---- summary --------------------------------------------------------------------------------------------------
 printf '\n%sTest summary%s  (%s)\n' "$B" "$N" "$LOG_DIR"
 printf '  %-18s' module
@@ -373,6 +455,16 @@ done
         for s in ${STAGES//,/ }; do printf '%s\t%s\t%s\n' "$m" "$s" "${RESULT["$m/$s"]:-"-"}"; done
     done
 } >"$LOG_DIR/summary.tsv"
+
+if [[ ${#PROD_ONLY[@]} -gt 0 ]]; then
+    printf '\n%sProduction-only parts%s (removed from the test profiles; live status of the production run):\n' "$B" "$N"
+    for s in "${PROD_ONLY[@]}"; do
+        c="$D"
+        [[ "$s" == *PENDING* ]] && c="$Y"
+        printf '  %s%s%s\n' "$c" "$s" "$N"
+    done
+fi
+[[ -z "$PROD_BIN_NOTE" ]] || printf '\n%swarn%s %s\n' "$Y" "$N" "$PROD_BIN_NOTE"
 
 if [[ ${#CONTAINER_SKIPS[@]} -gt 0 ]]; then
     printf '\n%sNot tested in the container%s (steps removed from the test profiles; %s):\n' "$Y" "$N" \

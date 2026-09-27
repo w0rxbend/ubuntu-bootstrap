@@ -7,7 +7,7 @@ assert_gnome_extensions() {
     ASSERT_MODULE=gnome-extensions
     assert_exec "$HOME/.local/bin/gext"
     if ! has_gui; then
-        skip "extension checks" "no GNOME session bus"
+        no_gui "extension checks"
         return
     fi
     local uuid

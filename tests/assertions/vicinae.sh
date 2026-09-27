@@ -37,11 +37,13 @@ assert_vicinae() {
         else
             skip "extension loaded by the running shell" "becomes ACTIVE after the next log out/in"
         fi
+    else
+        no_gui "extension enabled in org.gnome.shell"
     fi
 
     section "Super+D toggles vicinae"
     if ! has_gui; then
-        skip "keybinding checks" "no GNOME session bus"
+        no_gui "Super+D keybinding checks"
         return
     fi
     check_sh "show-desktop no longer holds <Super>d" "! gsettings get org.gnome.desktop.wm.keybindings show-desktop | grep -qiF \"'<Super>d'\""

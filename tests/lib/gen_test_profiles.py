@@ -18,6 +18,11 @@ CONTAINER_SKIP_KINDS below). Each one is listed in the generated file's header c
 OUT_DIR/container-skips.tsv (module file, step, reason), which run-tests.sh prints and copies to its log dir, so
 nothing is skipped silently. A name in CONTAINER_SKIPS that no profile has any more is an error.
 
+Every production-only part (a removed halting step or restart policy) is listed in OUT_DIR/production-only.tsv
+(module file, phase, step or "-", what). tests/run-tests.sh's prod-status stage reads it and reports each one's
+live status from the production profile and state, so a step the tests never run is shown as pending/done/not
+exercised instead of silently absent.
+
 Usage: gen_test_profiles.py REPO_DIR OUT_DIR [--check] [--quiet] [--container]
 """
 
@@ -92,7 +97,8 @@ def container_skip_reason(step):
     return CONTAINER_SKIP_KINDS.get(step.get("kind")) or CONTAINER_SKIPS.get(step.get("name"))
 
 
-def transform(doc, src_dir, notes, container=False, skipped=None):
+def transform(doc, src_dir, notes, container=False, skipped=None, prod_only=None):
+    prod_only = [] if prod_only is None else prod_only
     phases = doc.get("spec", {}).get("phases", [])
     removed_phases = set()
     kept = []
@@ -100,11 +106,13 @@ def transform(doc, src_dir, notes, container=False, skipped=None):
         rp = phase.get("restartPolicy")
         if isinstance(rp, dict) and rp.get("type") in HALTING_RESTART:
             notes.append(f"phase {phase['name']}: removed restartPolicy {rp['type']}")
+            prod_only.append((phase["name"], "-", f"restartPolicy {rp['type']}"))
             del phase["restartPolicy"]
         steps = []
         for step in phase.get("steps") or []:
             if step.get("kind") in HALTING_KINDS:
                 notes.append(f"phase {phase['name']}: removed {step['kind']} step {step['name']}")
+                prod_only.append((phase["name"], step["name"], f"{step['kind']} step"))
                 continue
             reason = container_skip_reason(step) if container else None
             if reason:
@@ -160,11 +168,11 @@ def absolute(value, src_dir, notes, step):
     return new
 
 
-def render(src, repo, container=False, skipped=None):
+def render(src, repo, container=False, skipped=None, prod_only=None):
     with open(src) as fh:
         doc = yaml.load(fh, Loader=StrictLoader)
     notes = []
-    doc = transform(doc, os.path.dirname(src), notes, container, skipped)
+    doc = transform(doc, os.path.dirname(src), notes, container, skipped, prod_only)
     rel = os.path.relpath(src, repo)
     out = io.StringIO()
     out.write(f"# GENERATED from {rel} by tests/gen-test-profiles.sh. Do not edit; edit {rel} and regenerate.\n")
@@ -197,13 +205,15 @@ def main(argv):
     manifest = []
     wanted = set()
     skips = []  # (profile rel path, phase, step, kind, reason)
+    prod_rows = []  # (profile rel path, phase, step or "-", what)
     for src in sources:
         rel = os.path.relpath(src, prod)
         dest = os.path.join(outdir, rel)
         wanted.add(dest)
-        skipped = []
-        text, notes = render(src, repo, container, skipped)
+        skipped, prod_only = [], []
+        text, notes = render(src, repo, container, skipped, prod_only)
         skips += [(os.path.join("profiles", rel), *s) for s in skipped]
+        prod_rows += [(os.path.join("profiles", rel), *s) for s in prod_only]
         manifest.append((rel, len(notes)))
         old = open(dest).read() if os.path.exists(dest) else None
         if check:
@@ -238,6 +248,17 @@ def main(argv):
         os.makedirs(outdir, exist_ok=True)
         with open(skip_file, "w") as fh:
             fh.write(skip_text)
+    prod_file = os.path.join(outdir, "production-only.tsv")
+    prod_text = "".join("\t".join(r) + "\n" for r in prod_rows)
+    old_prod = open(prod_file).read() if os.path.exists(prod_file) else None
+    if check:
+        if prod_text != old_prod:
+            drift += 1
+            print("production-only.tsv out of date")
+    elif prod_text != old_prod:
+        os.makedirs(outdir, exist_ok=True)
+        with open(prod_file, "w") as fh:
+            fh.write(prod_text)
     # Stale generated files whose production profile is gone.
     if os.path.isdir(outdir):
         for root, _dirs, files in os.walk(outdir):
