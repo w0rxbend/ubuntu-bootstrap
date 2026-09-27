@@ -18,8 +18,10 @@
 # - SDKMAN, nvm and pyenv installers are bash-only, so they use shell-scripts with
 #   `shell: bash` and a pinned sha256 instead of the `toolchain` kind (which runs
 #   its script with dash).
-# - Installers that edit shell rc files (sdkman, pnpm, juliaup) only touch the
-#   throwaway oh-my-zsh .zshrc; 80-dotfiles later replaces it with the repo's.
+# - SDKMAN runs with ?rcupdate=false and juliaup with --add-to-path=no, so neither
+#   edits ~/.bashrc or ~/.zshrc (the linked .zshrc loads both). pnpm's installer always
+#   runs `pnpm setup`, which appends a PNPM_HOME block to the rc file of $SHELL: that
+#   lands in the throwaway oh-my-zsh .zshrc, which 80-dotfiles backs up and replaces.
 # - Pinned digests were computed on 2026-09-27. When an upstream script changes,
 #   the step fails closed: review the new script, then update the sha256 here.
 # -----------------------------------------------------------------------------
@@ -138,8 +140,9 @@ spec:
             shell: bash
             scripts:
               - name: sdkman
-                url: https://get.sdkman.io
-                sha256: b6f4fb257b420c7291c35549ae714af6d5af290bb8d57c219918f1f3d3d3e052
+                # rcupdate=false: the served script omits the ~/.bashrc and ~/.zshrc edits.
+                url: https://get.sdkman.io?rcupdate=false
+                sha256: 8642db91ce900cf406d2cd457c2b3c7b8fe3e4a8fe454192ae6a34df435052ec
                 timeout: 10m
             probeCommand: "test -s $HOME/.sdkman/bin/sdkman-init.sh"
         - name: sdkman-auto-answer

@@ -18,7 +18,7 @@
 # - The probes (`--check` modes of the two scripts) decide whether a re-run does anything: the clone step
 #   re-runs when the remote has new commits, the link step when any link is missing or wrong.
 # - dotbot runs with force: true, but only after the backup, so nothing in $HOME is lost.
-# - This profile runs late on purpose: installers that append to ~/.zshrc (sdkman, juliaup, pnpm, ...)
+# - This profile runs late on purpose: installers that append to ~/.zshrc (pnpm, codex, kimi, ...)
 #   have already run and edited the throwaway template, not the linked file in ~/.system-bootstrap.
 apiVersion: initkit.io/v1alpha1
 kind: WorkstationProfile

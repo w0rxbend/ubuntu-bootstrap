@@ -9,7 +9,8 @@ assert_toolchains() {
     assert_exec "$HOME/.cargo/bin/rustup" '^rustup [0-9]'
     assert_exec "$HOME/.cargo/bin/cargo" '^cargo [0-9]'
     assert_exec "$HOME/.cargo/bin/rustc" '^rustc [0-9]'
-    assert_exec "$HOME/.cargo/bin/cargo-binstall" '[0-9]+\.[0-9]+'
+    # cargo-binstall's --version takes a value (a crate version); -V prints its own version.
+    assert_exec "$HOME/.cargo/bin/cargo-binstall" '^[0-9]+\.[0-9]+' -V
 
     section "crates (cargo-binstall), by the binary each one provides"
     local crate bin

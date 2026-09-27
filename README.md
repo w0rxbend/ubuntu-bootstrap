@@ -197,7 +197,7 @@ Splitting the setup this way has these consequences:
   curl installers) sit in **leaf phases** that no other phase depends on.
 - The only `prompt-logout` phase is in the last module, `session`, so dry-runs of the other modules are never cut
   short. The generated test profiles drop it entirely.
-- `dotfiles` runs late on purpose. Several installers (SDKMAN, juliaup, pnpm, codex, kimi) append lines to
+- `dotfiles` runs late on purpose. Several installers (pnpm, codex, kimi) append lines to
   `~/.zshrc`. Running dotbot after them means those lines land in the throwaway oh-my-zsh template (which is backed
   up to `~/.zorin-bootstrap-backup/.zshrc`), and dotbot then replaces it with the link to
   `~/.system-bootstrap/.files/.zshrc`. If dotbot ran first, the installers would edit the shared file.
@@ -637,7 +637,7 @@ described in the profile header.
 |---|---|
 | `validate` | `fluxion validate --strict` + lint of each selected test profile, and `bootstrap.sh --test --dry-run` exits 0 with no checkpoint |
 | `apply` | `bootstrap.sh --test --only MODULES` exits 0 for every module |
-| `idempotency` | The same run again: every module exits 0 and nothing runs except its `assert` steps (fluxion re-checks every assert on each run and never skips a phase that holds one, see the caveats table). `--strict-idempotency` adds `--re-probe`, so recorded state is ignored and every item must be satisfied by its live probe; there package `actions` such as apt `update` also run when their step has no `probeCommand`, and are not counted either. Items that did run again are listed in `ran-again-MODULE.txt` in the log dir |
+| `idempotency` | The same run again: every module exits 0 and nothing runs except its `assert` steps (fluxion re-checks every assert on each run and never skips a phase that holds one, see the caveats table). `--strict-idempotency` adds `--re-probe`, so recorded state is ignored and every item must be satisfied by its live probe; there package `actions` such as apt `update` also run when their step has no `probeCommand`, and are not counted either; nor are `tool-packages` and `sdkman-packages` items without a step `probeCommand`, because fluxion 0.3.1 has no live probe for those kinds (`fluxion status` shows them as unknown) and re-runs them, which cargo-binstall and `sdk install` turn into no-ops. Items that did run again are listed in `ran-again-MODULE.txt` in the log dir |
 | `assert` | `tests/assertions/MODULE.sh`: the real outcome. Packages from the profile's own lists, commands at their pinned versions, apt sources and keyrings, docker/containerd active and `docker run --rm hello-world` (with `sudo -n` until the docker group is active), `~/.system-bootstrap` clone and pushurl, every dotbot link resolving into the clone or this repo, skills links + the name check, an interactive zsh finding claude/codex/kimi, gsettings for `Super+1..9` (plus a scan for any other holder), `Super+D` -> vicinae and show-desktop, the vicinae user service and `ping`, login shell and group membership in `/etc/group` |
 
 ```bash

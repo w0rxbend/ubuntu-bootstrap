@@ -11,7 +11,8 @@ Usage: profile_query.py PROFILE QUERY
   pipx           one package per line (tool-packages with backend pipx)
   probeless      item keys that run on every --re-probe by design: `assert` steps (a check, not a change)
                  and the pre-install `actions` of package steps without a step-level probeCommand
-                 (e.g. apt `update`, shown as action[N])
+                 (e.g. apt `update`, shown as action[N]), and tool-packages / sdkman-packages items
+                 without a step-level probeCommand (fluxion has no live probe for those kinds)
   asserts        names of the `assert` steps: fluxion re-checks them on every run (never skipped from state)
 """
 
@@ -75,6 +76,13 @@ def main(path, query):
             if not spec.get("probeCommand"):
                 for i, _ in enumerate(spec.get("actions") or []):
                     out.append(f"action[{i}]")
+                # fluxion 0.3.1 registers no live probe for tool-packages or sdkman-packages items
+                # (`fluxion status` calls them "unknown"), so --re-probe runs them again. The tools
+                # themselves skip what is present (cargo-binstall, `sdk install`), so nothing changes.
+                if kind == "tool-packages":
+                    out += names(spec.get("packages"))
+                elif kind == "sdkman-packages":
+                    out += names(spec.get("packages"), key="candidate")
         elif query == "asserts" and kind == "assert":
             out.append(step.get("name", ""))
         elif query == "sdkman" and kind == "sdkman-packages":
