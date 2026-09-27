@@ -240,7 +240,7 @@ if [[ "${TEST_CONTEXT:-}" == container ]]; then
     done
     if [[ ${#CONTAINER_SKIPS[@]} -gt 0 ]]; then
         say "container mode: ${#CONTAINER_SKIPS[@]} step(s) removed from the test profiles (NOT tested here):"
-        printf '    %sSKIP%s %s\n' "$Y" "$N" "${CONTAINER_SKIPS[@]}"
+        for s in "${CONTAINER_SKIPS[@]}"; do printf '    %sSKIP%s %s\n' "$Y" "$N" "$s"; done
     fi
 fi
 

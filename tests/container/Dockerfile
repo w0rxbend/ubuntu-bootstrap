@@ -11,7 +11,10 @@ ARG USER_NAME=tester
 ARG USER_UID=1000
 ARG USER_GID=1000
 
-ENV DEBIAN_FRONTEND=noninteractive LANG=en_US.UTF-8 TERM=dumb
+# Build-time only (ARG, not ENV): at run time fluxion must meet the same environment as in a desktop terminal,
+# where nothing sets DEBIAN_FRONTEND.
+ARG DEBIAN_FRONTEND=noninteractive
+ENV LANG=en_US.UTF-8 TERM=xterm-256color
 
 COPY zorin-baseline.txt /tmp/zorin-baseline.txt
 RUN apt-get update \

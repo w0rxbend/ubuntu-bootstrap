@@ -51,7 +51,7 @@ Do this from the **local GNOME session**, in a terminal on the machine itself ra
 installs are authorised by polkit only for the active local session, and `gsettings` needs the session bus.
 
 ```bash
-# 1. prerequisites (a fresh Zorin already ships curl, but git may be missing)
+# 1. prerequisites (a fresh Zorin 18 ships curl but not git)
 sudo apt update && sudo apt install -y git curl
 
 # 2. clone to the expected path (the profiles hard-code repoDir=$HOME/.zorin-bootstrap)
@@ -256,7 +256,8 @@ Every profile begins with a `host-check` assert that the host is noble-based wit
     ├── run-tests.sh              # validate, apply, idempotency re-apply, assertions; --container
     ├── generated/                # git-ignored, regenerated before every use
     ├── assertions/               # lib.sh + one <module>.sh per module (the real post-conditions)
-    ├── container/Dockerfile      # ubuntu:24.04 image for --container
+    ├── container/Dockerfile      # "fresh Zorin" image for --container (ubuntu:24.04 + Zorin os-release)
+    ├── container/zorin-baseline.txt  # what that image adds: Zorin-shipped CLI packages (+ git), delta documented
     ├── lib/                      # generator, profile queries, inline-snippet extractor (python3 + PyYAML)
     └── logs/                     # git-ignored run logs
 
@@ -671,9 +672,20 @@ FLUXION_BIN=~/Projects/Github/fluxion.cr-zorin-fixes/bin/fluxion tests/run-tests
 - Logs, the per-stage `--report` files and `summary.tsv` go to `tests/logs/<timestamp>/` (git-ignored; `--log-dir`
   to change).
 - Each assertion file also runs on its own: `tests/assertions/vicinae.sh`.
-- Container mode builds `tests/container/Dockerfile` (same user name, uid and home path as the host, passwordless
-  sudo **inside the image only**) and runs the non-GUI modules there with `ASSERT_CONTEXT=container`, which skips
-  checks that need systemd, snapd, flatpak or a GNOME session. Modules that need the desktop session are refused.
+- Container mode is the fresh-machine test. It builds `tests/container/Dockerfile`: ubuntu:24.04 plus the packages
+  in `tests/container/zorin-baseline.txt`, all of which ship with Zorin OS 18 (taken from a Zorin 18.1 install
+  manifest, `/var/log/installer/initial-status.gz`) except `git`, which the quick start installs; Zorin 18.1's
+  `/etc/os-release` and `/etc/lsb-release` (`ID=zorin`, `base-files` held so the upgrade keeps them); the host's
+  user name, uid and home path with passwordless sudo **inside the image only**. The desktop, snapd and flatpak
+  are not in it. The run then `git clone`s this repo's **committed HEAD** (mounted read-only) to
+  `~/.zorin-bootstrap`, exactly like the quick start, so uncommitted changes are not tested (it warns). Only the
+  non-GUI modules run (`base,apps,toolchains,binaries,shell,dotfiles,wallpapers`); the others are refused.
+- Nothing is skipped silently in the container. Steps that need systemd as PID 1 or snapd (`systemd-unit` and
+  `system-setting` kinds, the `ghostty` snap; `CONTAINER_SKIPS` in `tests/lib/gen_test_profiles.py`) are removed
+  from the test profiles only there (`TEST_CONTEXT=container`), each one listed in the generated file's header,
+  in `container-skips.tsv` in the log dir, before the run and in the summary. The assertions run with
+  `ASSERT_CONTEXT=container` and print a `skip` line (with the reason) for every check that needs systemd, snapd,
+  flatpak, a GNOME session or a GUI module's output (claude/codex/kimi come from `desktop-apps`).
 - fluxion 0.3.1 reports every **apt package as "not installed"** in its probes (it replaces the tab in
   `dpkg-query`'s output with a space before parsing it; see the caveats table). Plain idempotency is unaffected (the
   second run skips completed phases), but `--strict-idempotency` needs a fluxion with that fixed: the patched build
@@ -770,6 +782,7 @@ tests/run-tests.sh --only NAME                  # apply + idempotency + assertio
 | **A `prompt-logout` phase was never recorded as completed, and the run exited 0** (0.3.1): the halted phase only wrote a resume point, so every later run re-ran `session` and asked for a logout again, and `bootstrap.sh` saw rc 0 instead of the checkpoint code 75, so with `--with-optional` it carried on into the optional modules (post-checks included) before the re-login | Fixed on the `fix/zorin-bootstrap` branch (`4254ceb`): the phase is recorded as completed and `apply` exits 75, so `bootstrap.sh` stops at the checkpoint once and the next run skips `session` from state. With 0.3.1, run the optional modules only after logging back in (`./bootstrap.sh --only post-checks` etc.) and ignore the repeated logout notice |
 | **A step's `probeCommand` was re-run before every item** (0.3.1), so once an earlier script made it true the later scripts of that step were skipped ("skipped: installed (probe)") and the step still counted as a success | Fixed on the `fix/zorin-bootstrap` branch (`9a77b8f`): the step's `probeCommand` is answered once per apply for the whole step. Profiles follow one rule either way: one step per observable state, and each step's probe is true only when all its scripts are done. Work judged on what an earlier step leaves behind gets its own step (`vicinae-post-install`) |
 | **The flatpak probe only lists apps** (`flatpak list --app`, 0.3.1), but OBS plugins (`com.obsproject.Studio.Plugin.*`) are runtime refs, so after their install they still read as absent and `--re-probe` installs them again (a no-op for flatpak, but reported as changes) | Fixed on the `fix/zorin-bootstrap` branch (`7430ef4`): the probe lists every installed ref. With 0.3.1 the default (state-based) idempotency run still skips them; only `--strict-idempotency` on `obs` reports them as ran again. `assert_flatpaks` checks every ref, not only apps |
+| **`gpg-key` fails on a fresh account**: it reads each key with `gpg --batch --no-options --show-keys`, and with `--no-options` gpg will not create a missing `~/.gnupg` (`gpg: Fatal: ~/.gnupg: directory does not exist!`), so on a new install every `gpg-key` step failed (0.3.1 and `fix/zorin-bootstrap`; found by the container test) | `apps` creates `~/.gnupg` (0700) in its `gnupg-home` phase, which the three `gpg-key` phases depend on |
 | **fluxion never prompts for sudo**: it only uses `sudo -n` | `bootstrap.sh` runs `sudo -v` once, then a keep-alive loop runs until exit. Ubuntu's sudo ticket lasts 15 minutes and TeX Live alone takes longer |
 | **PATH is read once, at start-up** | One fluxion process per module, and `bootstrap.sh` exports all future tool directories up front, so later modules see earlier installs |
 | **`when:` is evaluated at load time** | Profiles do not use `commandExists` guards on tools that the same run installs |

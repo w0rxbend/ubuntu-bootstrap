@@ -24,12 +24,13 @@ _skills_names_match() {
 
 # The interactive zsh the user gets must still find the CLIs the installers put on PATH (the hand-edited
 # ~/.zshrc used to add them).
-_zsh_finds_clis() {
+# _zsh_finds CMD...  - an interactive zsh (the linked ~/.zshrc + ~/.custom.zsh) resolves every CMD on its PATH
+_zsh_finds() {
     local out
     out="$(env -u KITTY_WINDOW_ID -u TMUX WITH_TMUX=false WITH_ZELLIJ=false \
-        timeout 60 zsh -i -c 'for c in claude codex kimi starship eza; do print -r -- "$c=$(whence -p $c)"; done' 2>/dev/null </dev/null)"
+        timeout 60 zsh -i -c 'for c in "$@"; do print -r -- "$c=$(whence -p $c)"; done' zsh "$@" 2>/dev/null </dev/null)"
     printf '%s\n' "$out"
-    ! grep -q '=$' <<<"$out" && grep -q '^claude=' <<<"$out"
+    [[ -n "$out" ]] && ! grep -q '=$' <<<"$out"
 }
 
 assert_dotfiles() {
@@ -99,7 +100,16 @@ assert_dotfiles() {
 
     section "shell"
     if command -v zsh >/dev/null 2>&1; then
-        check "interactive zsh finds claude, codex, kimi, starship, eza" _zsh_finds_clis
+        check "interactive zsh finds starship, eza" _zsh_finds starship eza
+        # claude, codex and kimi come from desktop-apps. The container runs no GUI module, so there they are
+        # only checked when present (the host always checks them: a missing one fails).
+        local agents=() missing=() c p
+        for c in claude:"$HOME/.local/bin/claude" codex:"$HOME/.local/bin/codex" kimi:"$HOME/.kimi-code/bin/kimi"; do
+            p="${c#*:}"
+            if [[ -x "$p" ]] || ! in_container; then agents+=("${c%%:*}"); else missing+=("${c%%:*}"); fi
+        done
+        [[ ${#agents[@]} -eq 0 ]] || check "interactive zsh finds ${agents[*]}" _zsh_finds "${agents[@]}"
+        [[ ${#missing[@]} -eq 0 ]] || skip "interactive zsh finds ${missing[*]}" "installed by desktop-apps, which the container does not run"
     else
         skip "interactive zsh" "zsh missing"
     fi

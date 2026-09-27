@@ -57,6 +57,11 @@ libfuse2t64
 xdg-utils
 desktop-file-utils
 software-properties-common
+apt-utils
+# touches /var/lib/apt/periodic/update-success-stamp after every successful `apt-get update` (15update-stamp);
+# 00-base's apt probes read that stamp
+update-notifier-common
+unattended-upgrades
 libglib2.0-bin
 dconf-cli
 dbus
