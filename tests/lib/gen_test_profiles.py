@@ -45,6 +45,8 @@ CONTAINER_SKIP_KINDS = {
 }
 CONTAINER_SKIPS = {
     "ghostty": "snap install needs snapd (systemd service)",
+    "apps-vscode": "snap install needs snapd (systemd service)",
+    "apps-crystal": "snap install needs snapd (systemd service)",
 }
 
 

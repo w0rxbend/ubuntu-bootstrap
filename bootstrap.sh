@@ -24,7 +24,7 @@ set -euo pipefail
 # --------------------------------------------------------------------------------------------
 DEFAULT_PROFILES=(
     "base:profiles/00-base.yaml:Ubuntu-archive packages, debconf preseeds, git config, clock, libvirtd"
-    "apps:profiles/10-apps.yaml:gh, Claude Desktop, VS Code, 1Password, ChatGPT, fastfetch"
+    "apps:profiles/10-apps.yaml:gh, Claude Desktop, VS Code, 1Password, ChatGPT, fastfetch, Crystal"
     "docker:profiles/20-docker.yaml:Docker CE from download.docker.com (replaces podman), distrobox"
     "toolchains:profiles/30-toolchains.yaml:rustup, cargo-binstall + crates, Go, SDKMAN, nvm, pnpm, pyenv, uv, ..."
     "binaries:profiles/40-binaries.yaml:binstaller tools in ~/.apps, nvim system links, Nerd Fonts"

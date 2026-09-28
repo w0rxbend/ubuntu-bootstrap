@@ -11,8 +11,8 @@
 #   - Screenshot UI on Super+Print and Print
 #   - Dock favourites as pinned on this host (Brave, Files, App Center, Ghostty, Ptyxis, Telegram,
 #     Vesktop, ChatGPT, Claude, Paseo); runs after apps (10), shell (50, ghostty) and desktop-apps (60,
-#     telegram-desktop snap: the host pins the org.telegram.desktop flatpak, which the bootstrap replaces by the
-#     snap), so the IDs exist. Only written when Vesktop is not pinned yet, so later hand edits are kept.
+#     brave, telegram-desktop and vesktop-tsugu snaps), so the IDs exist. Only written when the
+#     vesktop-tsugu snap is not pinned yet, so later hand edits are kept.
 #
 # Run alone:  ./bootstrap.sh --only gnome
 #
@@ -81,6 +81,6 @@ spec:
           spec:
             commands:
               - name: favorite-apps
-                run: "gsettings set org.gnome.shell favorite-apps \"['brave_brave.desktop', 'org.gnome.Nautilus.desktop', 'snap-store_snap-store.desktop', 'ghostty_ghostty.desktop', 'org.gnome.Ptyxis.desktop', 'telegram-desktop_telegram-desktop.desktop', 'dev.vencord.Vesktop.desktop', 'chatgpt.desktop', 'com.anthropic.Claude.desktop', 'paseo.desktop']\""
+                run: "gsettings set org.gnome.shell favorite-apps \"['brave_brave.desktop', 'org.gnome.Nautilus.desktop', 'snap-store_snap-store.desktop', 'ghostty_ghostty.desktop', 'org.gnome.Ptyxis.desktop', 'telegram-desktop_telegram-desktop.desktop', 'vesktop-tsugu_vesktop-tsugu.desktop', 'chatgpt.desktop', 'com.anthropic.Claude.desktop', 'paseo.desktop']\""
                 timeout: 1m
-            probeCommand: "gsettings get org.gnome.shell favorite-apps | grep -q Vesktop"
+            probeCommand: "gsettings get org.gnome.shell favorite-apps | grep -q vesktop-tsugu"

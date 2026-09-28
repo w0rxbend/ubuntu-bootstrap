@@ -79,7 +79,7 @@ assert_gnome() {
     # that is required; pins of the declared list that were removed by hand are reported, not failed.
     local fav a unpinned=()
     fav="$(gsettings get org.gnome.shell favorite-apps 2>/dev/null)"
-    check "favourites written (Vesktop pinned: the gnome-favorite-apps probe)" grep -qF "'dev.vencord.Vesktop.desktop'" <<<"$fav"
+    check "favourites written (Vesktop pinned: the gnome-favorite-apps probe)" grep -qF "'vesktop-tsugu_vesktop-tsugu.desktop'" <<<"$fav"
     for a in ghostty_ghostty.desktop chatgpt.desktop com.anthropic.Claude.desktop paseo.desktop; do
         grep -qF "'$a'" <<<"$fav" || unpinned+=("$a")
     done

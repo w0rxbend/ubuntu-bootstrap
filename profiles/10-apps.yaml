@@ -3,9 +3,9 @@
 # Third-party desktop/CLI apps that were installed by hand on this host, reproduced
 # declaratively. Every app is its own leaf phase, so one broken vendor repo never blocks
 # the others:
-#   gh (GitHub CLI repo), claude-desktop (Anthropic repo), VS Code (Microsoft repo),
+#   gh (GitHub CLI repo), claude-desktop (Anthropic repo), VS Code (`code` classic snap),
 #   1Password (1Password repo), ChatGPT desktop (.deb), fastfetch (.deb from GitHub),
-#   Crystal (openSUSE OBS devel:languages:crystal repo).
+#   Crystal (`crystal` classic snap, which also provides `shards`).
 #
 # Run alone:   ./bootstrap.sh --only apps
 # Caveats:
@@ -22,24 +22,21 @@
 #     is harmless. Our claude-desktop.list has no
 #     "### Managed by the claude-desktop package." marker, so the postinst leaves it alone and
 #     it keeps pointing at the dearmored .gpg.
-#   - VS Code and 1Password keep their vendor deb822 .sources files (their package postinst
-#     scripts own them). They are written byte-identical to what the packages write, with the
-#     keys installed by gpg-key at the same keyring paths, so apt never sees conflicting
-#     Signed-By values.
+#   - 1Password keeps its vendor deb822 .sources file (the package postinst owns it). It is
+#     written byte-identical to what the package writes, with the key installed by gpg-key at
+#     the same keyring path, so apt never sees conflicting Signed-By values.
+#   - VS Code and Crystal are snaps, as installed by hand on this host (no Microsoft or OBS apt
+#     repo). Both are classic snaps; snap refreshes them. The crystal snap is 1.21.1 at the time
+#     of writing, new enough to build fluxion (>= 1.21).
 #   - file-writes steps are probed by existence only: with --skip-already-installed an
 #     existing .sources file is left untouched even if its content differs.
 #   - ChatGPT has no public key URL (the key ships inside the .deb, whose postinst adds
 #     chatgpt.sources), so it is installed from the vendor .deb; later updates come via apt.
 #   - fastfetch: the upstream .deb (latest release) is installed rather than the older resolute archive build
 #     (update it by re-running with --re-probe after removing it, or via the upstream release page).
-#   - Crystal: `crystal-lang.org/install.sh | sudo zsh` wrote a broken source on this host (00-base
-#     moves it aside). This phase adds the repo the installer meant to add (sourceList replaces the
-#     same crystal.list path) and installs the `crystal` meta package (crystal1.21 at the time of
-#     writing, which also ships /usr/bin/shards; never add Ubuntu's own `shards` package, it
-#     clashes). An older crystal from resolute universe (1.18.2) counts as installed for the dpkg
-#     probe, so apps-crystal-upgrade moves it to the repo build when it is older than 1.21
-#     (fluxion needs >= 1.21 to build). The OBS signing key expires 2027-09-22; when OBS renews
-#     it, update the sha256 below.
+#   - Crystal: `crystal-lang.org/install.sh | sudo zsh` wrote a broken apt source on this host; 00-base
+#     moves it aside. Never install Ubuntu's own `crystal`/`shards` packages next to the snap: /usr/bin
+#     comes before /snap/bin on PATH, so they would shadow it.
 #   - Brave (the brave snap on this host) is intentionally not managed here.
 apiVersion: initkit.io/v1alpha1
 kind: WorkstationProfile
@@ -119,41 +116,20 @@ spec:
             packages: [claude-desktop]
 
     - name: vscode
-      description: "Visual Studio Code from packages.microsoft.com (deb822 source, same as the package writes)"
-      dependsOn: [host-check, gnupg-home]
+      description: "Visual Studio Code (classic snap `code`)"
+      dependsOn: [host-check]
       execution: { continueOnError: false }
       steps:
-        - name: apps-vscode-key
-          kind: gpg-key
-          spec:
-            keys:
-              - url: https://packages.microsoft.com/keys/microsoft.asc
-                fingerprint: BC528686B50D79E339D3721CEB3E94ADBE1229CF
-                keyring: /usr/share/keyrings/microsoft.gpg
-        - name: apps-vscode-source
-          kind: file-writes
-          spec:
-            files:
-              - name: vscode.sources
-                destination: /etc/apt/sources.list.d/vscode.sources
-                mode: "0644"
-                content: |
-                  ### THIS FILE IS AUTOMATICALLY CONFIGURED ###
-                  # You may comment out this entry, but any other modifications may be lost.
-                  Types: deb
-                  URIs: https://packages.microsoft.com/repos/code
-                  Suites: stable
-                  Components: main
-                  Architectures: amd64
-                  Signed-By: /usr/share/keyrings/microsoft.gpg
         - name: apps-vscode
-          kind: apt-packages
+          kind: commands
           spec:
-            # The step probe only gates `apt-get update` (the package keeps its dpkg probe): the new source's
-            # index is needed only to install code, so skip the update once it is installed.
-            probeCommand: "dpkg -s code 2>/dev/null | grep -qx 'Status: install ok installed'"
-            actions: [update]
-            packages: [code]
+            commands:
+              - name: code-snap
+                run: "snap install code --classic"
+                sudo: true
+                unless: "snap list code >/dev/null 2>&1"
+                timeout: 15m
+            probeCommand: "snap list code >/dev/null 2>&1"
 
     - name: onepassword
       description: "1Password desktop app from downloads.1password.com (deb822 source, same as the package writes)"
@@ -224,29 +200,17 @@ spec:
             probeCommand: "dpkg -s fastfetch >/dev/null 2>&1"
 
     - name: crystal
-      description: "Crystal compiler from the openSUSE OBS devel:languages:crystal repo (xUbuntu_26.04)"
+      description: "Crystal compiler and shards (classic snap `crystal`)"
       dependsOn: [host-check]
       execution: { continueOnError: false }
       steps:
-        - name: apps-crystal-repo
-          kind: apt-repository
-          spec:
-            source: deb [signed-by=/etc/apt/keyrings/crystal.gpg] https://download.opensuse.org/repositories/devel:/languages:/crystal/xUbuntu_26.04/ /
-            sourceList: /etc/apt/sources.list.d/crystal.list
-            signingKeyUrl: https://download.opensuse.org/repositories/devel:/languages:/crystal/xUbuntu_26.04/Release.key
-            keyring: /etc/apt/keyrings/crystal.gpg
-            checksum: { algorithm: sha256, value: d841f03d9866316a5dbb4a1a8032f61b9437f2493223775c3a299985c9ad8a6a }
         - name: apps-crystal
-          kind: apt-packages
-          spec:
-            packages: [crystal]
-        - name: apps-crystal-upgrade
           kind: commands
-          description: "Upgrade a pre-existing archive crystal (< 1.21) to the repo build"
           spec:
             commands:
-              - name: crystal-upgrade
+              - name: crystal-snap
+                run: "snap install crystal --classic"
                 sudo: true
+                unless: "snap list crystal >/dev/null 2>&1"
                 timeout: 15m
-                run: "apt-get install -y --only-upgrade crystal"
-            probeCommand: 'v="$(crystal --version 2>/dev/null | sed -n ''s/^Crystal \([0-9][0-9.]*\).*/\1/p'')"; test -n "$v" && dpkg --compare-versions "$v" ge 1.21'
+            probeCommand: "snap list crystal >/dev/null 2>&1"

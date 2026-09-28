@@ -126,7 +126,7 @@ cd ~/.ubuntu-bootstrap && ./bootstrap.sh --only post-checks
 The full walk-through, including what to do when a module fails half-way, is
 [First run on a fresh Ubuntu](#first-run-on-a-fresh-ubuntu-step-by-step).
 
-A full run on a fresh install takes a while. The slow parts are TeX Live, around 54 flatpaks, SDKMAN candidates,
+A full run on a fresh install takes a while. The slow parts are TeX Live, around 51 flatpaks and 22 snaps, SDKMAN candidates,
 Miniforge and the Nerd Fonts, which total about 1.5 GB. When a module fails, the script **carries on with the next
 one** and prints a summary at the end. Fix whatever failed and re-run just that module with
 `./bootstrap.sh --only NAME`.
@@ -227,12 +227,12 @@ bus.
    echo ~/.local/opt/fluxion/fluxion > ~/.ubuntu-bootstrap/fluxion-bin.local
    ```
 
-   or build it from the `fix/zorin-bootstrap` branch (Crystal >= 1.21; pipe the Crystal installer to **bash**, not
-   zsh, see [Troubleshooting](#troubleshooting)). The branch is not published yet: push it to your fluxion.cr remote
+   or build it from the `fix/zorin-bootstrap` branch (Crystal >= 1.21, from the `crystal` classic snap that `apps`
+   also installs). The branch is not published yet: push it to your fluxion.cr remote
    from the machine that has it first, or use the copy above.
 
    ```bash
-   curl -fsSL https://crystal-lang.org/install.sh | sudo bash
+   sudo snap install crystal --classic
    sudo apt install -y libyaml-dev libssl-dev libpcre2-dev zlib1g-dev
    git clone -b fix/zorin-bootstrap <fluxion.cr remote> ~/Projects/fluxion.cr && cd ~/Projects/fluxion.cr
    shards install && crystal build --release --no-debug src/main.cr -o bin/fluxion
@@ -401,12 +401,12 @@ Default sequence (`./bootstrap.sh`):
 | # | Module | File | What it does |
 |---|---|---|---|
 | 1 | `base` | `profiles/00-base.yaml` | Repair of the broken Crystal apt source, `apt full-upgrade`, debconf preseeds, about 190 Ubuntu-archive packages (CLI, build, debug, GUI-dev, media, fonts, TeX, desktop, virtualisation), GPU tools chosen by `lspci`, libvirtd, global git config, NTP clock, `bat` symlink |
-| 2 | `apps` | `profiles/10-apps.yaml` | Third-party apt apps: GitHub CLI, Claude Desktop, VS Code, 1Password, Crystal (repo and key), ChatGPT and fastfetch (`.deb`) |
+| 2 | `apps` | `profiles/10-apps.yaml` | Third-party apps: GitHub CLI, Claude Desktop, 1Password (apt repos), ChatGPT and fastfetch (`.deb`), VS Code and Crystal (classic snaps) |
 | 3 | `docker` | `profiles/20-docker.yaml` | Docker CE, buildx and the compose plugin from Docker's apt repo, the docker/containerd services, distrobox |
 | 4 | `toolchains` | `profiles/30-toolchains.yaml` | rustup, cargo-binstall and 14 crates, Go 1.27.1, SDKMAN and 8 candidates, nvm and Node LTS, pnpm, pyenv, poetry, uv, Miniforge, juliaup, kustomize, helm 4, dotenvx |
 | 5 | `binaries` | `profiles/40-binaries.yaml` | binstaller profile (13 tools in `~/.apps`), `nvim`/`vim` links in `/usr/local/bin`, Nerd Fonts in 4 batches |
 | 6 | `shell` | `profiles/50-shell.yaml` | oh-my-zsh (pinned) and 3 plugins, TPM, starship, kitty (upstream build, desktop integration, `x-terminal-emulator` alternative), ghostty snap |
-| 7 | `desktop-apps` | `profiles/60-desktop-apps.yaml` | flatpak and the Flathub remote, 54 flatpaks in category groups, theia-ide and telegram snaps, Claude Code, Codex and Kimi CLIs, Zed, Paseo |
+| 7 | `desktop-apps` | `profiles/60-desktop-apps.yaml` | flatpak and the Flathub remote, 51 flatpaks in category groups, 20 snaps, Claude Code, Codex and Kimi CLIs, Zed, Paseo |
 | 8 | `gnome` | `profiles/70-gnome.yaml` | 9 fixed workspaces, `Super+N` / `Super+Shift+N` bindings, screenshot keys, Ubuntu Dock hot-keys turned off, pinned favourites |
 | 9 | `vicinae` | `profiles/75-vicinae.yaml` | Vicinae launcher (pinned AppImage via the official script into `/usr/local`), its systemd user service, the `vicinae@dagimg-dot` GNOME extension, `Super+D` toggle |
 | 10 | `dotfiles` | `profiles/80-dotfiles.yaml` | Clones/fast-forwards `~/.system-bootstrap`, backs up what is in the way, links both dotbot configs (shared dotfiles from the clone, Ubuntu-only files and agent skills from this repo), tmux plugins, broot launcher |
@@ -450,17 +450,17 @@ nothing when the files are absent or correct.
 Debconf preseeds run first: they accept the mscorefonts EULA and set wireshark to `install-setuid=false`. fluxion does
 not set `DEBIAN_FRONTEND`, so without the preseeds these packages could hang waiting for an answer.
 
-### `apps`: third-party apt apps (these were installed by hand on this host)
+### `apps`: third-party apps (these were installed by hand on this host)
 
 | App | Source |
 |---|---|
 | `gh` | `cli.github.com/packages` repo, keyring `/etc/apt/keyrings/githubcli-archive-keyring.gpg` (sha256-pinned) |
 | `claude-desktop` | `downloads.claude.ai/claude-desktop/apt/stable` repo, keyring `/usr/share/keyrings/claude-desktop-archive-keyring.gpg`. It pulls in qemu, ovmf and virtiofsd for its VM |
-| `code` | Microsoft key (fingerprint-pinned) and a `vscode.sources` file identical to the one the package writes |
+| `code` | The `code` classic snap (VS Code), refreshed by snapd |
 | `1password` | 1Password key (fingerprint-pinned) and a `1password.sources` file identical to the one the package writes |
 | `chatgpt` | The latest `.deb` from `persistent.oaistatic.com`. Its postinst adds the repo and keyring, since there is no public key URL |
 | `fastfetch` | The latest `.deb` from the fastfetch GitHub releases (newer than the resolute archive build) |
-| `crystal` | openSUSE OBS `devel:languages:crystal` repo (`xUbuntu_26.04`, the one `crystal-lang.org/install.sh` sets up), keyring `/etc/apt/keyrings/crystal.gpg` (sha256-pinned; the key expires 2027-09-22). The `crystal` meta package pulls `crystal1.21` (Crystal 1.21.1 with `/usr/bin/shards`; this host already runs it). `apps-crystal-upgrade` moves an older universe build (1.18.2 on resolute) to the repo build, because the dpkg probe alone would count 1.18.2 as installed. Never add Ubuntu's `shards` package: it clashes with `/usr/bin/shards` from `crystal1.21` |
+| `crystal` | The `crystal` classic snap (Crystal 1.21.1 at the time of writing, with `shards`), refreshed by snapd. Never install Ubuntu's `crystal`/`shards` apt packages next to it: `/usr/bin` comes before `/snap/bin` on `PATH`, so they would shadow it |
 
 Brave is not touched. On this host it is the `brave` snap, installed by hand.
 
@@ -531,17 +531,21 @@ oh-my-zsh (pinned revision and sha256), zsh-syntax-highlighting, zsh-autosuggest
 
 - **flatpak** from apt and the **Flathub** remote (the descriptor is sha256-pinned). Ubuntu ships neither; it
   defaults to snaps.
-- **Flatpaks** (54 in total, one leaf phase per group, `continueOnError`):
+- **Flatpaks** (51 in total, one leaf phase per group, `continueOnError`):
   - browsers: LibreWolf, Chrome, Zen
-  - communication: Discord, Zulip, **Vesktop**
-  - media: Spotify, Audacity, AudioTube, ncspot, Decibels, Amberol, G4Music
+  - communication: Discord
+  - media: Audacity, AudioTube, ncspot, Decibels, Amberol, G4Music
   - graphics: Kdenlive, Inkscape, Krita, Blender, FreeCAD, Godot, LibreCAD, BambuStudio, Exhibit
   - writing: TextPieces, Apostrophe, Bookup, Censor, Logseq
   - dev: WezTerm, VSCodium (Ptyxis is Ubuntu's default terminal already, from apt)
   - system: Extension Manager, Flatseal, Flatsweep, Warehouse, Resources, Refine, Mission Center, Gradia, List,
     Authenticator, Polari, D-Spy, Rewaita, Emblem, Mozilla VPN, NetPeek, **GNOME Boxes**, **Gear Lever**
   - productivity: Sessions, Blanket, Packet, LocalSend, NewsFlash, Dosage, Health
-- **Snaps**: `theia-ide` (classic) and `telegram-desktop`.
+- **Snaps** (as installed by hand on this host; `continueOnError`): `brave`, `telegram-desktop`, `vesktop-tsugu`
+  (Vesktop), `zulip`, `slack`, `spotify`, `mailspring`, `beekeeper-studio`, `onlyoffice-desktopeditors`, `zenkit-todo`
+  and `glab` in one step, plus one step per classic snap: `sublime-text`, `theia-ide`, `workshop`, `waveterm`,
+  `jupyterlab-desktop`, `antigravity`, `antigravity-ide-snap`, `flutter` and `skuberplus-client`. OBS is the one
+  exception: it stays a flatpak in the optional `obs` module.
 - **AI CLIs**: Claude Code (`claude.ai/install.sh`), OpenAI Codex (`chatgpt.com/codex/install.sh`), and Kimi Code
   (`code.kimi.com`, run with bash, since running it with zsh failed on this host).
 - **Home-dir apps**: Zed (`zed.dev/install.sh`) and **Paseo**, in the layout Gear Lever gave it on this host:
@@ -564,8 +568,8 @@ run inside the logged-in GNOME session and asserts that `DBUS_SESSION_BUS_ADDRES
 
 It also sets the dash/taskbar favourites to what I pinned by hand: Brave, Files, Software, Ghostty, Terminal,
 Telegram (the snap), Vesktop, ChatGPT, Claude and Paseo (`org.gnome.shell favorite-apps`). `gnome` runs after `apps`,
-`shell` and `desktop-apps`, so those `.desktop` IDs exist by then. The list is only written while Vesktop is not
-pinned yet, so pins changed by hand later are left alone. The assertion follows that: it requires Vesktop and only
+`shell` and `desktop-apps`, so those `.desktop` IDs exist by then. The list is only written while the Vesktop snap (`vesktop-tsugu_vesktop-tsugu.desktop`)
+is not pinned yet, so pins changed by hand later are left alone. The assertion follows that: it requires Vesktop and only
 reports (skip) the other declared pins that were removed by hand.
 
 `tests/assertions/gnome.sh` also checks that the running mutter has 9 workspaces (`_NET_NUMBER_OF_DESKTOPS` on the
@@ -826,7 +830,7 @@ FLUXION_BIN=/path/to/fluxion tests/run-tests.sh --require-prod-bin ...   # anoth
   `~/.ubuntu-bootstrap`, exactly like the quick start, so uncommitted changes are not tested (it warns). Only the
   non-GUI modules run (`base,apps,toolchains,binaries,shell,dotfiles,wallpapers`); the others are refused.
 - Nothing is skipped silently in the container. Steps that need systemd as PID 1 or snapd (`systemd-unit` and
-  `system-setting` kinds, the `ghostty` snap; `CONTAINER_SKIPS` in `tests/lib/gen_test_profiles.py`) are removed
+  `system-setting` kinds, the `ghostty`, `code` and `crystal` snaps; `CONTAINER_SKIPS` in `tests/lib/gen_test_profiles.py`) are removed
   from the test profiles only there (`TEST_CONTEXT=container`), each one listed in the generated file's header,
   in `container-skips.tsv` in the log dir, before the run and in the summary. The assertions run with
   `ASSERT_CONTEXT=container` and print a `skip` line (with the reason) for every check that needs systemd, snapd,
@@ -960,8 +964,9 @@ parts" with `done` / `PENDING`.
 1. **GitHub CLI:** run `gh auth login`.
 2. **SSH key:** run `ssh-keygen -t ed25519 -C "balyszyn@gmail.com"`, then `gh ssh-key add ~/.ssh/id_ed25519.pub`.
    Never copy `~/.ssh` into this repo; `.gitignore` blocks `id_*`, `*.pem` and `*.key`.
-3. **Telegram duplicate:** this host has Telegram both as a snap and as the flatpak `org.telegram.desktop`. The
-   bootstrap keeps the **snap**, so remove the flatpak with `flatpak uninstall org.telegram.desktop`.
+3. **Flatpak duplicates:** the bootstrap installs Telegram, Zulip, Vesktop and Spotify as **snaps**. If an older run
+   left their flatpaks behind, remove them with
+   `flatpak uninstall org.telegram.desktop org.zulip.Zulip dev.vencord.Vesktop com.spotify.Client`.
 4. **Sign in** to 1Password, Claude Desktop, ChatGPT, Claude Code (`claude`), Codex (`codex`), Kimi (`kimi`), VS
    Code settings sync, Spotify, Discord/Vesktop and Telegram.
 5. **Vesktop:** open Vencord settings, go to *Backup & Restore*, and import
@@ -1024,7 +1029,7 @@ parts" with `done` / `PENDING`.
 | RPM Fusion, the ffmpeg swap, fedora-workstation-repositories, the Fedora/Arch dotbot overlays, `fedora-/arch-system-update.sh` | Only apply to Fedora or Arch. Ubuntu's `ubuntu-restricted-extras` covers the codecs, and `ubuntu-system-update.sh` replaces the update scripts |
 | Brave flatpak | Brave comes from its snap on this host |
 | `dev.zed.Zed` flatpak | Zed comes from `zed.dev/install.sh`, as on the host |
-| `org.telegram.desktop` flatpak | The snap is kept |
+| `org.telegram.desktop`, `org.zulip.Zulip`, `dev.vencord.Vesktop`, `com.spotify.Client` flatpaks | Their snaps are used, as on this host |
 | `com.oguzhaninan.Stacer` flatpak | Removed from Flathub. Stacer comes from apt instead |
 | apt `kitty`, `neovim` (0.9.5), `yq` (Python flavour), `fd-find`, `gnome-shell-extension-manager` | Replaced by upstream kitty, binstaller's neovim and mikefarah yq, cargo's `fd`, and the Extension Manager flatpak |
 | `mimeapps.list` | Only the niri config links it in the old repo, and Ubuntu/GNOME manages it |
@@ -1068,9 +1073,8 @@ Then edit the value in the profile and run `just validate`.
 | Go version and tarball sha256 (`spec.vars`). **Also** change the literal `go1.27.1 ` in the `go-toolchain` probeCommand: probes cannot use `${...}`, and a stale probe re-downloads Go on every run | `profiles/30-toolchains.yaml` |
 | rustup, cargo-binstall script (commit and sha), SDKMAN, nvm tag and sha, pyenv, juliaup | `profiles/30-toolchains.yaml` |
 | oh-my-zsh revision and sha, zsh plugin commits, TPM commit | `profiles/50-shell.yaml` |
-| Docker / GitHub CLI / Claude Desktop key sha256; Microsoft / 1Password key fingerprints | `profiles/20-docker.yaml`, `profiles/10-apps.yaml` |
+| Docker / GitHub CLI / Claude Desktop key sha256; 1Password key fingerprint | `profiles/20-docker.yaml`, `profiles/10-apps.yaml` |
 | distrobox version and tarball sha256 (`spec.vars`). **Also** change the literal `distrobox: 1.8.2.5` in the `docker-distrobox` probeCommand | `profiles/20-docker.yaml` |
-| Crystal OBS key sha256 (the key expires 2027-09-22) | `profiles/10-apps.yaml` |
 | Flathub descriptor sha256 | `profiles/60-desktop-apps.yaml`, `profiles/optional/obs.yaml` |
 | binstaller tool versions | `config/binstaller.yaml` |
 | Vicinae version, AppImage and install-script sha256, GNOME extension zip version and sha256 (also the literal versions in the probes) | `profiles/75-vicinae.yaml` |
@@ -1094,9 +1098,9 @@ fluxion state show docker                                       # ~/.local/share
 piped to `sudo zsh`. zsh keeps the backslashes of `${OBS_PROJECT//:/:\/}`, so
 `/etc/apt/sources.list.d/crystal.list` contains `devel:\/languages:\/crystal` (a 404) and
 `/etc/apt/trusted.gpg.d/devel_languages_crystal.gpg` is empty. `base` moves both files to `/var/backups` first (phase
-`apt-sources-repair`) and `apps` adds the correct repo. To fix it by hand:
+`apt-sources-repair`); Crystal itself comes from the `crystal` snap. To fix it by hand:
 `sudo rm -f /etc/apt/sources.list.d/crystal.list /etc/apt/trusted.gpg.d/devel_languages_crystal.gpg`. If you use
-that installer again, pipe it to `bash`, not `zsh`.
+that installer again, pipe it to `bash`, not `zsh`, or better use `sudo snap install crystal --classic`.
 
 **yazi stops at `Press <Enter> to continue with preset settings` (`TOML parse error ... "$schema"` or `missing field group`):** the `yazi.toml` and `keymap.toml` linked from `~/.system-bootstrap/.files/.config/yazi` are in a pre-v26 format that the pinned yazi v26.5.6 rejects (the old repo pins the same version, so this is not new). It is the clone's content, so fix it there (drop the `"$schema"` lines and move the files to the v26 format, then commit in `~/.system-bootstrap`); `tests/assertions/dotfiles.sh` reports it as a skip until the linked config loads.
 

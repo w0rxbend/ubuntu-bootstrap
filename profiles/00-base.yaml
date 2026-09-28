@@ -8,7 +8,7 @@
 #   - bat -> batcat symlink, libvirtd service, global git identity, NTP clock
 #   - GPU tools picked by hardware (radeontop on AMD, intel-media-va-driver on Intel)
 #   - repairs the broken Crystal apt source left by `crystal-lang.org/install.sh | sudo zsh`
-#     (the proper Crystal repo is added by 10-apps)
+#     (Crystal itself comes from the crystal snap in 10-apps)
 #
 # Run alone:   ./bootstrap.sh --only base
 # Caveats:
@@ -38,8 +38,7 @@ spec:
     # Must run before anything calls `apt-get update`. On this host the Crystal installer was
     # piped to zsh, which kept the backslashes of ${OBS_PROJECT//:/:\/}: crystal.list points at a
     # URL that 404s and the trusted.gpg.d keyring is 0 bytes, so every `apt-get update` exits 100.
-    # Both files are moved to /var/backups here; 10-apps (phase crystal) writes a correct source
-    # and keyring.
+    # Both files are moved to /var/backups here; Crystal itself is the crystal snap (10-apps).
     - name: apt-sources-repair
       description: "Move the broken Crystal apt source/keyring aside (no-op when absent or correct)"
       dependsOn: [host-check]

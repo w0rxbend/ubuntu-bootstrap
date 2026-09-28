@@ -2,8 +2,11 @@
 #
 # GUI applications and user-level app installers:
 #   - flatpak itself (apt) and the flathub system remote: Ubuntu ships neither (it defaults to snaps)
-#   - 54 flatpaks from flathub, split into 8 independent category phases
-#   - snaps: theia-ide (classic) and telegram-desktop
+#   - 51 flatpaks from flathub, split into 8 independent category phases
+#   - 20 snaps, as installed by hand on this host: brave, telegram-desktop, vesktop-tsugu, zulip,
+#     slack, spotify, mailspring, beekeeper-studio, onlyoffice-desktopeditors, zenkit-todo, glab, and
+#     (classic) sublime-text, theia-ide, workshop, waveterm, jupyterlab-desktop, antigravity,
+#     antigravity-ide-snap, flutter, skuberplus-client
 #   - AI CLIs: Claude Code, OpenAI Codex, Kimi Code
 #   - home-dir apps: Zed (zed.dev installer) and the Paseo AppImage, laid out the way Gear Lever
 #     integrated it on this host (~/AppImages/paseo.appimage, icon in ~/AppImages/.icons, launcher
@@ -17,10 +20,11 @@
 #
 # Notes:
 #   - Every category is a leaf phase with continueOnError, so one broken app never blocks others.
-#   - org.gnome.Boxes, dev.vencord.Vesktop and it.mijorus.gearlever were installed by hand on this host.
+#   - org.gnome.Boxes and it.mijorus.gearlever were installed by hand on this host.
 #   - Deliberately excluded: com.oguzhaninan.Stacer (gone from flathub; apt stacer in 00-base),
 #     com.brave.Browser (Brave is the brave snap on this host), dev.zed.Zed (Zed comes from
-#     zed.dev/install.sh below), org.telegram.desktop (the telegram-desktop snap is used),
+#     zed.dev/install.sh below), org.telegram.desktop, org.zulip.Zulip, dev.vencord.Vesktop and
+#     com.spotify.Client (the telegram-desktop, zulip, vesktop-tsugu and spotify snaps are used),
 #     app.devsuite.Ptyxis (Ubuntu 26.04 ships Ptyxis as its default terminal, org.gnome.Ptyxis).
 #   - claude-desktop and chatgpt are apt packages in 10-apps.
 apiVersion: initkit.io/v1alpha1
@@ -79,8 +83,6 @@ spec:
             remote: flathub
             apps:
               - com.discordapp.Discord
-              - org.zulip.Zulip
-              - dev.vencord.Vesktop        # hand-installed on this host (system scope)
 
     - name: flatpak-media
       dependsOn: [host-check, flathub]
@@ -91,7 +93,6 @@ spec:
           spec:
             remote: flathub
             apps:
-              - com.spotify.Client
               - org.audacityteam.Audacity
               - org.kde.audiotube
               - io.github.hrkfdn.ncspot
@@ -191,10 +192,37 @@ spec:
               - dev.Cogitri.Health
 
     - name: snaps
-      description: "Snaps installed by hand on this host (ghostty lives in 50-shell)"
+      description: "Snaps installed by hand on this host (ghostty lives in 50-shell, code and crystal in 10-apps)"
       dependsOn: [host-check]
       execution: { continueOnError: true }
       steps:
+        - name: snap-strict
+          kind: tool-packages
+          spec:
+            backend: snap
+            packages:
+              - brave
+              - telegram-desktop
+              - vesktop-tsugu
+              - zulip
+              - slack
+              - spotify
+              - mailspring
+              - beekeeper-studio
+              - onlyoffice-desktopeditors
+              - zenkit-todo
+              - glab
+            probeCommand: "snap list brave >/dev/null 2>&1 && snap list telegram-desktop >/dev/null 2>&1 && snap list vesktop-tsugu >/dev/null 2>&1 && snap list zulip >/dev/null 2>&1 && snap list slack >/dev/null 2>&1 && snap list spotify >/dev/null 2>&1 && snap list mailspring >/dev/null 2>&1 && snap list beekeeper-studio >/dev/null 2>&1 && snap list onlyoffice-desktopeditors >/dev/null 2>&1 && snap list zenkit-todo >/dev/null 2>&1 && snap list glab >/dev/null 2>&1"
+        - name: snap-sublime-text
+          kind: commands
+          spec:
+            commands:
+              - name: sublime-text
+                run: "snap install sublime-text --classic"
+                sudo: true
+                unless: "snap list sublime-text >/dev/null 2>&1"
+                timeout: 15m
+            probeCommand: "snap list sublime-text >/dev/null 2>&1"
         - name: snap-theia-ide
           kind: commands
           spec:
@@ -205,12 +233,76 @@ spec:
                 unless: "snap list theia-ide >/dev/null 2>&1"
                 timeout: 15m
             probeCommand: "snap list theia-ide >/dev/null 2>&1"
-        - name: snap-telegram
-          kind: tool-packages
+        - name: snap-workshop
+          kind: commands
           spec:
-            backend: snap
-            packages: [telegram-desktop]
-            probeCommand: "snap list telegram-desktop >/dev/null 2>&1"
+            commands:
+              - name: workshop
+                run: "snap install workshop --classic"
+                sudo: true
+                unless: "snap list workshop >/dev/null 2>&1"
+                timeout: 15m
+            probeCommand: "snap list workshop >/dev/null 2>&1"
+        - name: snap-waveterm
+          kind: commands
+          spec:
+            commands:
+              - name: waveterm
+                run: "snap install waveterm --classic"
+                sudo: true
+                unless: "snap list waveterm >/dev/null 2>&1"
+                timeout: 15m
+            probeCommand: "snap list waveterm >/dev/null 2>&1"
+        - name: snap-jupyterlab-desktop
+          kind: commands
+          spec:
+            commands:
+              - name: jupyterlab-desktop
+                run: "snap install jupyterlab-desktop --classic"
+                sudo: true
+                unless: "snap list jupyterlab-desktop >/dev/null 2>&1"
+                timeout: 15m
+            probeCommand: "snap list jupyterlab-desktop >/dev/null 2>&1"
+        - name: snap-antigravity
+          kind: commands
+          spec:
+            commands:
+              - name: antigravity
+                run: "snap install antigravity --classic"
+                sudo: true
+                unless: "snap list antigravity >/dev/null 2>&1"
+                timeout: 15m
+            probeCommand: "snap list antigravity >/dev/null 2>&1"
+        - name: snap-antigravity-ide-snap
+          kind: commands
+          spec:
+            commands:
+              - name: antigravity-ide-snap
+                run: "snap install antigravity-ide-snap --classic"
+                sudo: true
+                unless: "snap list antigravity-ide-snap >/dev/null 2>&1"
+                timeout: 15m
+            probeCommand: "snap list antigravity-ide-snap >/dev/null 2>&1"
+        - name: snap-flutter
+          kind: commands
+          spec:
+            commands:
+              - name: flutter
+                run: "snap install flutter --classic"
+                sudo: true
+                unless: "snap list flutter >/dev/null 2>&1"
+                timeout: 15m
+            probeCommand: "snap list flutter >/dev/null 2>&1"
+        - name: snap-skuberplus-client
+          kind: commands
+          spec:
+            commands:
+              - name: skuberplus-client
+                run: "snap install skuberplus-client --classic"
+                sudo: true
+                unless: "snap list skuberplus-client >/dev/null 2>&1"
+                timeout: 15m
+            probeCommand: "snap list skuberplus-client >/dev/null 2>&1"
 
     - name: ai-tools
       description: "AI coding CLIs from their vendors' installers"
