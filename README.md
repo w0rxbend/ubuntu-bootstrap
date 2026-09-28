@@ -280,7 +280,8 @@ bus.
 ## fluxion.cr patches
 
 This repo needs fluxion fixes that are **not in a fluxion release yet**. They are on branch **`fix/zorin-bootstrap`**
-of fluxion.cr (on top of `main`, which is 0.3.1). Until a release includes them, run a build of that branch (see
+of fluxion.cr (on top of `main`, which is 0.3.1), proposed upstream in
+[worxbend/fluxion.cr#2](https://github.com/worxbend/fluxion.cr/pull/2). Until a release includes them, run a build of that branch (see
 [First run](#first-run-on-a-fresh-zorin-step-by-step)); `bootstrap.sh` refuses to apply with fluxion 0.3.1 as
 released. The check: `fluxion tools list` shows `binstaller v0.5.0` on a patched build and `v0.2.0` on 0.3.1.
 
