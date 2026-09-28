@@ -9,14 +9,14 @@
 #   3. fluxion on PATH
 # Nothing found -> empty; bootstrap.sh then installs the fluxion release.
 #
-# This repo needs fixes that are not in a fluxion release yet (fluxion.cr branch fix/zorin-bootstrap; see
-# "fluxion.cr patches" in README.md). A stock 0.3.1 prints the same `fluxion 0.3.1`, so the version string cannot
-# tell them apart; fluxion_check_capable reads the build's binstaller pin instead: fix/zorin-bootstrap pins
-# binstaller v0.5.0 (8065313), fluxion 0.3.1 as released pins v0.2.0, which cannot unpack zig 0.15.2. The same
-# branch carries the apt probe, prompt-logout and assert fixes, so the pin stands for all of them.
+# This repo needs fluxion >= 0.4.1. 0.4.0 released this repo's fix/zorin-bootstrap fixes (apt probes, one
+# apt-get per package list, assert re-checks, apt-source and keyring checks, cargo/SDKMAN probes, binstaller
+# v0.5.0, prompt-logout, flatpak extensions); 0.4.1 added what Ubuntu 26.04 needed: privileged commands that are
+# symlinks into /usr/lib/cargo (Rust coreutils' install/chown), a probeCommand on the kinds 0.4.0 gave typed
+# probes, and waiting out an apt lock another process holds. fluxion_check_capable compares `fluxion --version`
+# with FLUXION_MIN_VERSION; FLUXION_ALLOW_UNPATCHED=1 lets an older build run anyway.
 
-FLUXION_REQUIRED_BRANCH="fix/zorin-bootstrap"
-FLUXION_MIN_BINSTALLER="0.3.0"
+FLUXION_MIN_VERSION="0.4.1"
 
 # fluxion_resolve REPO_DIR  - sets FLUXION_RESOLVED (the binary to use, or empty) and FLUXION_BIN_SOURCE
 # (env | local | path | none). Sets variables rather than printing, so the caller keeps both without a subshell.
@@ -50,29 +50,33 @@ fluxion_binstaller_pin() {
     "$1" tools list 2>/dev/null | awk '$1 == "binstaller" { v = $2; sub(/^v/, "", v); print v; exit }'
 }
 
-# fluxion_check_capable BIN  - 0 when BIN is a build with the fixes this repo needs; otherwise prints why
+# fluxion_version BIN  - the version BIN prints (e.g. 0.4.1), or nothing
+fluxion_version() {
+    "$1" --version 2>/dev/null | awk '$1 == "fluxion" { print $2; exit }'
+}
+
+# fluxion_check_capable BIN  - 0 when BIN is fluxion >= FLUXION_MIN_VERSION; otherwise prints why
 fluxion_check_capable() {
-    local bin="$1" pin
-    pin="$(fluxion_binstaller_pin "$bin")"
-    if [[ -z "$pin" ]]; then
-        echo "could not read the binstaller pin from '$bin tools list'"
+    local bin="$1" version
+    version="$(fluxion_version "$bin")"
+    if [[ -z "$version" ]]; then
+        echo "could not read the version from '$bin --version'"
         return 1
     fi
-    if [[ "$(printf '%s\n%s\n' "$FLUXION_MIN_BINSTALLER" "$pin" | sort -V | head -n1)" != "$FLUXION_MIN_BINSTALLER" ]]; then
-        echo "$bin pins binstaller v$pin (< v$FLUXION_MIN_BINSTALLER): it is a fluxion without the $FLUXION_REQUIRED_BRANCH fixes"
+    if [[ "$(printf '%s\n%s\n' "$FLUXION_MIN_VERSION" "$version" | sort -V | head -n1)" != "$FLUXION_MIN_VERSION" ]]; then
+        echo "$bin is fluxion $version; this repo needs $FLUXION_MIN_VERSION or later"
         return 1
     fi
     return 0
 }
 
-# fluxion_help_capable  - what to do about a binary without the fixes
+# fluxion_help_capable  - what to do about a binary that is too old
 fluxion_help_capable() {
     cat <<HELP
-  This repo needs a fluxion build with the fixes on fluxion.cr branch $FLUXION_REQUIRED_BRANCH (or a fluxion
-  release that includes them; see "fluxion.cr patches" in README.md). Point the repo at such a build:
-      just use-fluxion /path/to/fluxion        # writes fluxion-bin.local (git-ignored), used by every script
-  or  FLUXION_BIN=/path/to/fluxion ./bootstrap.sh ...
-  To run with this binary anyway (known failures: binaries/zig, apt probes, logout checkpoint), set
-  FLUXION_ALLOW_UNPATCHED=1.
+  This repo needs fluxion $FLUXION_MIN_VERSION or later (see "fluxion version" in README.md). Install the release:
+      curl --proto '=https' --tlsv1.2 -sSfL https://worxbend.github.io/fluxion.cr/install.sh | sh -s -- --version v$FLUXION_MIN_VERSION
+  (./bootstrap.sh does this itself when no fluxion is found), and delete fluxion-bin.local if it points at an
+  older build. To run another build: just use-fluxion /path/to/fluxion, or FLUXION_BIN=/path/to/fluxion.
+  To run with this binary anyway, set FLUXION_ALLOW_UNPATCHED=1.
 HELP
 }

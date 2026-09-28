@@ -21,9 +21,9 @@
 # - binstaller and nerd-fonts-installer are resolved by fluxion itself (PATH,
 #   then ~/.cache/fluxion/tools, then a download of the pinned, sha256-verified
 #   release: binstaller v0.5.0, nerd-fonts-installer v1.0.7).
-#   binstaller must be >= v0.3.0: v0.2.0 (the pin of fluxion 0.3.1 as released) cannot read GNU
-#   @LongLink tar headers and fails on zig-x86_64-linux-0.15.2.tar.xz. The patched fluxion build
-#   (fluxion.cr branch fix/zorin-bootstrap) pins v0.5.0; bootstrap.sh refuses to apply with a lower pin.
+#   binstaller must be >= v0.3.0: v0.2.0 (the pin of fluxion 0.3.1) cannot read GNU @LongLink
+#   tar headers and fails on zig-x86_64-linux-0.15.2.tar.xz. fluxion 0.4.0 and later pin v0.5.0;
+#   bootstrap.sh refuses to apply with a fluxion older than 0.4.1.
 # - binstaller runs in `mode: developer`: tools resolved via `latest-url` have no
 #   pinned checksum. Sudo symlinks are disabled in the binstaller config; the
 #   root links are made by the `neovim-system-links` phase below instead
@@ -61,7 +61,7 @@ spec:
         - name: binaries-binstaller
           kind: binstaller-profile
           spec:
-            # installerVersion left unset: fluxion's pinned release (v0.5.0 in the patched build) is used.
+            # installerVersion left unset: fluxion's pinned release (v0.5.0 since fluxion 0.4.0) is used.
             config: ../config/binstaller.yaml
             # Installed only when every one of the 13 executables is present.
             probeCommand: "for f in yazi/bin/yazi zig/zig minikube/bin/minikube xplr/bin/xplr kind/bin/kind zellij/bin/zellij kubectl/bin/kubectl neovide/bin/neovide neovim/bin/nvim lazygit/bin/lazygit jujutsu/bin/jj dotbot/bin/dotbot yq/bin/yq; do test -x \"$HOME/.apps/$f\" || exit 1; done"

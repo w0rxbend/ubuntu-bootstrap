@@ -42,7 +42,7 @@ OPTIONAL_PROFILES=(
     "post-checks:profiles/optional/post-checks.yaml:verification + manual-step reminders (after re-login)"
 )
 
-FLUXION_VERSION="${FLUXION_VERSION:-v0.3.1}"
+FLUXION_VERSION="${FLUXION_VERSION:-v0.4.1}"
 FLUXION_INSTALL_URL="https://worxbend.github.io/fluxion.cr/install.sh"
 EXPECTED_REPO_DIR="$HOME/.ubuntu-bootstrap"
 STATE_DIR="$HOME/.local/share/fluxion"
@@ -115,8 +115,8 @@ Environment:
   FLUXION_BIN        fluxion executable to use. Default: the path in fluxion-bin.local (git-ignored,
                      written by 'just use-fluxion PATH'), else fluxion on PATH, else the release is installed.
                      Resolved by scripts/lib/fluxion-bin.sh, the same resolver tests/run-tests.sh uses.
-  FLUXION_VERSION    release to install when no fluxion is found (default: v0.3.1)
-  FLUXION_ALLOW_UNPATCHED=1  apply with a fluxion that lacks the $FLUXION_REQUIRED_BRANCH fixes (warn only)
+  FLUXION_VERSION    release to install when no fluxion is found (default: v0.4.1)
+  FLUXION_ALLOW_UNPATCHED=1  apply with a fluxion older than $FLUXION_MIN_VERSION (warn only)
 
 Default sequence: $(default_names | tr '\n' ' ')
 Optional modules: $(optional_names | tr '\n' ' ')
@@ -362,9 +362,9 @@ fi
 export FLUXION_BIN
 FLUXION_VER_STR="$("$FLUXION_BIN" --version 2>/dev/null || echo 'fluxion ?')"
 info "using $FLUXION_VER_STR ($FLUXION_BIN, from $FLUXION_BIN_SOURCE)"
-# The released 0.3.1 and the patched build print the same version, so check what the build can do. Applying
-# with a build that lacks the fixes fails binaries (zig), re-runs every apt package and loops at the logout
-# checkpoint; read-only modes only warn.
+# An older fluxion fails on Ubuntu 26.04 (< 0.4.1: every privileged file write, because install and chown are
+# symlinks into /usr/lib/cargo) or fails binaries (zig), re-runs every apt package and loops at the logout
+# checkpoint (< 0.4.0). Read-only modes only warn.
 if ! capable_why="$(fluxion_check_capable "$FLUXION_BIN")"; then
     if [[ "$MODE" == apply && "${FLUXION_ALLOW_UNPATCHED:-0}" != 1 ]]; then
         err "$capable_why"

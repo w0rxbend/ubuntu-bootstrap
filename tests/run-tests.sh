@@ -31,7 +31,7 @@
 #          --require-prod-bin (fail when FLUXION_BIN differs from the binary a plain ./bootstrap.sh would run).
 # fluxion: resolved by scripts/lib/fluxion-bin.sh, the same resolver bootstrap.sh uses ($FLUXION_BIN, else the
 # git-ignored fluxion-bin.local written by `just use-fluxion PATH`, else fluxion on PATH), so the tests run the
-# production binary. It must carry the fluxion.cr fix/zorin-bootstrap fixes (README: "fluxion.cr patches").
+# production binary. It must be fluxion >= 0.4.1 (README: "fluxion version").
 # Environment: FLUXION_BIN, ASSERT_NETWORK=0 (skip network checks).
 # Exit status: 0 when every stage of every module passed, 1 otherwise, 2 for bad arguments.
 set -euo pipefail

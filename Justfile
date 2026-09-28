@@ -67,11 +67,11 @@ failed NAMES="":
 state NAME:
     {{ fluxion }} state show {{ NAME }}
 
-# Point every script at a fluxion build (writes the git-ignored fluxion-bin.local) and check it has the fixes
+# Point every script at a fluxion build (writes the git-ignored fluxion-bin.local) and check it is recent enough
 use-fluxion PATH:
     test -x "{{ PATH }}" || { echo "{{ PATH }} is not an executable file" >&2; exit 1; }
     printf '# fluxion build this repo runs (scripts/lib/fluxion-bin.sh; git-ignored, machine-local)\n%s\n' "$(readlink -f "{{ PATH }}")" > fluxion-bin.local
-    bash -c 'source scripts/lib/fluxion-bin.sh; FLUXION_BIN= fluxion_resolve .; echo "fluxion: $FLUXION_RESOLVED"; why="$(fluxion_check_capable "$FLUXION_RESOLVED")" && echo "has the fix/zorin-bootstrap fixes" || { echo "warning: $why" >&2; }'
+    bash -c 'source scripts/lib/fluxion-bin.sh; FLUXION_BIN= fluxion_resolve .; echo "fluxion: $FLUXION_RESOLVED"; why="$(fluxion_check_capable "$FLUXION_RESOLVED")" && echo "fluxion $(fluxion_version "$FLUXION_RESOLVED") >= $FLUXION_MIN_VERSION: ok" || { echo "warning: $why" >&2; }'
 
 # Forget everything fluxion recorded for a module (next run re-probes and re-runs it)
 state-reset NAME:

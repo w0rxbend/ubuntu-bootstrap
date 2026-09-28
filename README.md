@@ -1,8 +1,7 @@
 # ubuntu-bootstrap
 
 This repo sets up my workstation on **Ubuntu 26.04 LTS** ("resolute", GNOME 50, amd64) using
-[fluxion](https://worxbend.github.io/fluxion.cr/) 0.3.1 **plus fixes that are not in a fluxion release yet** (fluxion.cr
-branch `fix/zorin-bootstrap`, named after this repo's Zorin OS origins; see [fluxion.cr patches](#fluxioncr-patches)).
+[fluxion](https://worxbend.github.io/fluxion.cr/) **0.4.1 or later** (see [fluxion version](#fluxion-version)).
 
 It ports the Arch and Fedora scripts from
 [w0rxbend/system-bootstrap](https://github.com/w0rxbend/system-bootstrap) to declarative fluxion profiles. It also
@@ -27,7 +26,7 @@ A test harness runs the same orchestration on generated, non-halting copies of t
 
 - [Quick start](#quick-start)
 - [First run on a fresh Ubuntu, step by step](#first-run-on-a-fresh-ubuntu-step-by-step)
-- [fluxion.cr patches](#fluxioncr-patches)
+- [fluxion version](#fluxion-version)
 - [How it works](#how-it-works)
 - [Layout](#layout)
 - [Modules](#modules)
@@ -39,7 +38,7 @@ A test harness runs the same orchestration on generated, non-halting copies of t
 - [Testing](#testing)
 - [Adding or changing items](#adding-or-changing-items)
 - [Re-running and idempotency](#re-running-and-idempotency)
-- [fluxion 0.3.1 caveats handled here](#fluxion-031-caveats-handled-here)
+- [fluxion caveats handled here](#fluxion-caveats-handled-here)
 - [Manual steps after the bootstrap](#manual-steps-after-the-bootstrap)
 - [Optional modules](#optional-modules)
 - [Not ported, and why](#not-ported-and-why)
@@ -57,9 +56,8 @@ Prerequisites:
 
 - Ubuntu 26.04 LTS Desktop ("resolute"), amd64, a user with sudo rights, network access.
 - `git` and `curl` (a fresh Ubuntu 26.04 Desktop ships neither).
-- **A fluxion build with the `fix/zorin-bootstrap` fixes** (see [fluxion.cr patches](#fluxioncr-patches)). fluxion
-  0.3.1 as released fails `binaries` (zig) and loops at the log-out checkpoint, and `bootstrap.sh` refuses to apply
-  with it. It reads the build's binstaller pin to tell the two apart, since both print `fluxion 0.3.1`.
+- **fluxion 0.4.1 or later** (see [fluxion version](#fluxion-version)). `bootstrap.sh` installs the release to
+  `~/.local/bin` when it finds no fluxion, and refuses to apply with an older one.
 - About 10 GB of free disk and a couple of hours for the first run.
 
 ```bash
@@ -70,7 +68,7 @@ sudo apt update && sudo apt install -y git curl
 git clone git@github.com:w0rxbend/ubuntu-bootstrap.git ~/.ubuntu-bootstrap
 cd ~/.ubuntu-bootstrap
 
-# 3. point the repo at the patched fluxion (built as in "fluxion.cr patches", or copied from another machine).
+# 3. (optional) run a fluxion build of your own instead of the release bootstrap.sh installs.
 #    fluxion-bin.local is git-ignored; bootstrap.sh, the tests and `just` all read it.
 echo /path/to/fluxion > fluxion-bin.local     # later: just use-fluxion /path/to/fluxion
 
@@ -107,7 +105,7 @@ To apply a single module, or a single phase inside a module, without running eve
 ./bootstrap.sh --only docker                  # one module (wrapper: PATH, sudo keep-alive, summary)
 ./bootstrap.sh --only apps,docker             # several modules, in table order
 # one phase, directly with fluxion (keep the module's state name; run `sudo -v` first; `fluxion` below means
-# the patched build from fluxion-bin.local, e.g. alias fluxion="$(grep -v '^#' ~/.ubuntu-bootstrap/fluxion-bin.local | head -n1)"):
+# the build from fluxion-bin.local when there is one, e.g. alias fluxion="$(grep -v '^#' ~/.ubuntu-bootstrap/fluxion-bin.local | head -n1)"):
 fluxion apply -c profiles/10-apps.yaml --profile apps --phase vscode --skip-already-installed
 fluxion list -c profiles/10-apps.yaml         # phase and step names of a module
 fluxion graph -c profiles/10-apps.yaml        # phase dependency graph (mermaid)
@@ -168,10 +166,10 @@ Before any module runs, the script does these checks and setup steps:
 - It refuses to run as root.
 - It warns if the repo is not at `~/.ubuntu-bootstrap`, if you are connected over SSH, or if the host is not
   Ubuntu 26.04 "resolute".
-- It resolves fluxion as above and prints which one and where it came from. In apply mode it **refuses a build
-  without the `fix/zorin-bootstrap` fixes** (it reads the binstaller pin from `fluxion tools list`: v0.3.0 or later
-  means the fixes are in; 0.3.1 as released pins v0.2.0) and says how to point the repo at a patched build.
-  `FLUXION_ALLOW_UNPATCHED=1` turns that into a warning; read-only modes only warn.
+- It resolves fluxion as above and prints which one and where it came from. In apply mode it **refuses a fluxion
+  older than 0.4.1** (`FLUXION_MIN_VERSION` in `scripts/lib/fluxion-bin.sh`, compared with `fluxion --version`)
+  and says how to install the release. `FLUXION_ALLOW_UNPATCHED=1` turns that into a warning; read-only modes
+  only warn.
 - It exports a PATH that includes every tool location the modules create: `~/.cargo/bin`, `~/.local/bin`,
   `~/.go/bin`, `~/.apps/{dotbot,neovim,yq,helm,kustomize}/bin`, `~/.local/share/pnpm/bin` and juliaup.
 - It runs `sudo -v` once (skipped when `sudo -n true` already works, e.g. under NOPASSWD, where `sudo -v` can
@@ -219,28 +217,23 @@ bus.
    git clone git@github.com:w0rxbend/ubuntu-bootstrap.git ~/.ubuntu-bootstrap && cd ~/.ubuntu-bootstrap
    ```
 
-2. **The patched fluxion.** Either copy a build from a machine that has one (it needs only libraries Ubuntu ships:
-   libyaml-0-2, libssl3, libpcre2-8-0, zlib1g):
+2. **fluxion.** Nothing to do: `./bootstrap.sh` installs the release named by `FLUXION_VERSION` (v0.4.1) to
+   `~/.local/bin` when it finds none. To install it by hand, or to replace an older one:
 
    ```bash
-   install -Dm755 /media/usb/fluxion ~/.local/opt/fluxion/fluxion
-   echo ~/.local/opt/fluxion/fluxion > ~/.ubuntu-bootstrap/fluxion-bin.local
+   curl --proto '=https' --tlsv1.2 -sSfL https://worxbend.github.io/fluxion.cr/install.sh | sh -s -- --version v0.4.1
    ```
 
-   or build it from the `fix/zorin-bootstrap` branch (Crystal >= 1.21, from the `crystal` classic snap that `apps`
-   also installs). The branch is not published yet: push it to your fluxion.cr remote
-   from the machine that has it first, or use the copy above.
+   To run a build of your own instead (a fluxion.cr checkout: Crystal >= 1.21 from the `crystal` classic snap,
+   plus `build-essential pkg-config libyaml-dev libssl-dev libpcre2-dev zlib1g-dev`):
 
    ```bash
-   sudo snap install crystal --classic
-   sudo apt install -y libyaml-dev libssl-dev libpcre2-dev zlib1g-dev
-   git clone -b fix/zorin-bootstrap <fluxion.cr remote> ~/Projects/fluxion.cr && cd ~/Projects/fluxion.cr
-   shards install && crystal build --release --no-debug src/main.cr -o bin/fluxion
+   cd ~/Projects/fluxion.cr && shards install && crystal build --release --no-debug src/main.cr -o bin/fluxion
    echo ~/Projects/fluxion.cr/bin/fluxion > ~/.ubuntu-bootstrap/fluxion-bin.local && cd ~/.ubuntu-bootstrap
    ```
 
-   `./bootstrap.sh --validate` then prints `using fluxion 0.3.1 (<path>, from fluxion-bin.local)`, and warns if the
-   build lacks the fixes.
+   `./bootstrap.sh --validate` then prints `using fluxion 0.4.1 (<path>, from fluxion-bin.local)`, and warns if the
+   build is older than the repo needs.
 
 3. **Preview (optional, read-only):** `./bootstrap.sh --validate` and `./bootstrap.sh --dry-run`.
 
@@ -276,13 +269,16 @@ bus.
 
 ---
 
-## fluxion.cr patches
+## fluxion version
 
-This repo needs fluxion fixes that are **not in a fluxion release yet**. They are on branch **`fix/zorin-bootstrap`**
-of fluxion.cr (on top of `main`, which is 0.3.1), proposed upstream in
-[worxbend/fluxion.cr#2](https://github.com/worxbend/fluxion.cr/pull/2). Until a release includes them, run a build of that branch (see
-[First run](#first-run-on-a-fresh-ubuntu-step-by-step)); `bootstrap.sh` refuses to apply with fluxion 0.3.1 as
-released. The check: `fluxion tools list` shows `binstaller v0.5.0` on a patched build and `v0.2.0` on 0.3.1.
+This repo needs **fluxion 0.4.1 or later** (`FLUXION_MIN_VERSION` in `scripts/lib/fluxion-bin.sh`; `bootstrap.sh`
+and the tests refuse to apply with an older one, `FLUXION_ALLOW_UNPATCHED=1` overrides). `bootstrap.sh` installs
+`FLUXION_VERSION` (v0.4.1) when it finds no fluxion; to run a build of your own, `just use-fluxion PATH` (see
+[First run](#first-run-on-a-fresh-ubuntu-step-by-step)).
+
+The fixes this repo needed were written on the fluxion.cr branch `fix/zorin-bootstrap` (named after this repo's Zorin
+OS origins) and released in **fluxion 0.4.0**
+([worxbend/fluxion.cr#2](https://github.com/worxbend/fluxion.cr/pull/2)):
 
 | Commit | Fix | Why this repo needs it |
 |---|---|---|
@@ -299,8 +295,18 @@ released. The check: `fluxion tools list` shows `binstaller v0.5.0` on a patched
 | `bdf915b` | `fluxion state forget` takes the profile as a positional argument | the documented `state forget` commands |
 | `241e8f1`, `0da747d` | code split under 500 lines per file; divergences from the Java spec recorded | upstream hygiene, no behaviour change |
 
-When a fluxion release contains these commits: set `FLUXION_VERSION` in `bootstrap.sh` to it, install it, and delete
-`fluxion-bin.local`.
+**fluxion 0.4.1** ([worxbend/fluxion.cr#3](https://github.com/worxbend/fluxion.cr/pull/3) and after) added what the
+first run on Ubuntu 26.04 found:
+
+| Commit | Fix | Why this repo needs it |
+|---|---|---|
+| `0fb69d5` | a privileged command may be a root-owned symlink into another root-owned tree | Ubuntu 26.04 ships coreutils as Rust uutils: `/usr/bin/install` and `chown` link into `/usr/lib/cargo/bin/coreutils`, and 0.4.0 refused them ("not available from a trusted root-owned system directory"), so every `apt-repository` step and privileged file write failed |
+| `e88f6c0` | a declared `probeCommand` answers for the kinds 0.4.0 gave typed probes | the profiles' own probes stay in charge |
+| `8aa709f` | every batched package is reported; an owed logout is kept across runs | correct summaries; `session` still asks after an interrupted run |
+| `55ae3f7` | a package-manager lock held by another process is waited out (5 s to 30 s pauses, up to 15 min) | a fresh Desktop runs unattended-upgrades right after install, which used to fail the first apt phase |
+
+To move to a newer release: set `FLUXION_VERSION` in `bootstrap.sh`, raise `FLUXION_MIN_VERSION` if the repo comes
+to depend on it, install it, and delete `fluxion-bin.local` if it points at an older build.
 
 ---
 
@@ -338,9 +344,9 @@ Ubuntu-only already.
 ├── Justfile                      # shortcuts (just is installed by `toolchains`)
 ├── bootstrap.sh                  # ordered runner: preflight, sudo keep-alive, summary (--test for the tests)
 ├── .gitignore  .editorconfig  .shellcheckrc
-├── fluxion-bin.local             # git-ignored: path of the patched fluxion build this machine runs
+├── fluxion-bin.local             # git-ignored, optional: a fluxion build to run instead of the one on PATH
 ├── scripts/
-│   ├── lib/fluxion-bin.sh        # the one fluxion resolver + "has the fixes?" check (bootstrap, tests, just)
+│   ├── lib/fluxion-bin.sh        # the one fluxion resolver + minimum-version check (bootstrap, tests, just)
 │   ├── validate-all.sh           # validate --strict + lint (prod + test profiles), bash -n + shellcheck
 │   ├── system-bootstrap-sync.sh  # clone ~/.system-bootstrap (https) or fast-forward it; --check
 │   ├── dotfiles-link.sh          # back up what is in the way, run dotbot for both configs; --check/--dry-run
@@ -499,9 +505,9 @@ See [Docker instead of podman](#docker-instead-of-podman).
   xplr, kind v0.31.0, zellij v0.44.1, kubectl (stable), neovide (AppImage), neovim (latest), lazygit 0.61.0,
   jujutsu v0.40.0, dotbot v0.4.2, and **yq** (mikefarah, newly added). Every tool gets its own
   `~/.apps/<tool>/bin`.
-  **Needs binstaller >= v0.3.0.** fluxion 0.3.1 as released pins binstaller v0.2.0, and that version cannot read the
-  GNU `@LongLink` tar entries in `zig-x86_64-linux-0.15.2.tar.xz`, so the binstaller step fails on zig. The patched
-  build ([fluxion.cr patches](#fluxioncr-patches)) pins v0.5.0, and `bootstrap.sh` refuses to apply with a lower pin.
+  **Needs binstaller >= v0.3.0.** fluxion 0.3.1 pinned binstaller v0.2.0, and that version cannot read the GNU
+  `@LongLink` tar entries in `zig-x86_64-linux-0.15.2.tar.xz`, so the binstaller step failed on zig. fluxion 0.4.0
+  and later pin v0.5.0 (see [fluxion version](#fluxion-version)).
   Keep `installerVersion` out of the profile: fluxion only accepts its own pinned version.
 - **nvim system links**: `/usr/local/bin/{nvim,neovim,vim}` point to `~/.apps/neovim/bin/nvim`, so `sudo vim` also
   opens your Neovim. `/usr/bin` belongs to dpkg and is not touched. binstaller's own sudo symlinks are turned off.
@@ -787,7 +793,7 @@ described in the profile header.
 |---|---|
 | `validate` | `fluxion validate --strict` + lint of each selected test profile, and `bootstrap.sh --test --dry-run` exits 0 with no checkpoint |
 | `apply` | `bootstrap.sh --test --only MODULES` exits 0 for every module |
-| `idempotency` | The same run again: every module exits 0 and nothing runs except its `assert` steps (fluxion re-checks every assert on each run and never skips a phase that holds one, see the caveats table). `--strict-idempotency` adds `--re-probe`, so recorded state is ignored and every item must be satisfied by its live probe; there package `actions` such as apt `update` also run when their step has no `probeCommand`, and are not counted either (every `actions: [update]` in these profiles has one, so none run: 00-base skips it for 6 h after a successful update, 10-apps once the step's package is installed); nor are `tool-packages` items of the pipx, uv-tool, snap, npm-global and go-install backends without a step `probeCommand`, because fluxion has no live probe for those (`fluxion status` shows them as unknown) and re-runs them. `cargo`/`cargo-binstall` crates and `sdkman-packages` candidates are probed per item by the patched fluxion build (fluxion.cr `fix/zorin-bootstrap`, commits 9d7b731 and 82f3e77), so they must be skipped; with fluxion 0.3.1 they come back unknown and strict idempotency reports them. Items that did run again are listed in `ran-again-MODULE.txt` in the log dir |
+| `idempotency` | The same run again: every module exits 0 and nothing runs except its `assert` steps (fluxion re-checks every assert on each run and never skips a phase that holds one, see the caveats table). `--strict-idempotency` adds `--re-probe`, so recorded state is ignored and every item must be satisfied by its live probe; there package `actions` such as apt `update` also run when their step has no `probeCommand`, and are not counted either (every `actions: [update]` in these profiles has one, so none run: 00-base skips it for 6 h after a successful update, 10-apps once the step's package is installed); nor are `tool-packages` items of the pipx, uv-tool, snap, npm-global and go-install backends without a step `probeCommand`, because fluxion has no live probe for those (`fluxion status` shows them as unknown) and re-runs them. `cargo`/`cargo-binstall` crates and `sdkman-packages` candidates are probed per item since fluxion 0.4.0 (commits 9d7b731 and 82f3e77), so they must be skipped. Items that did run again are listed in `ran-again-MODULE.txt` in the log dir |
 | `prod-status` | Read-only, what the tests cannot run: for each production-only part in `production-only.tsv`, the live status from the **production** profile and state (`fluxion status --format json`): `done`, `PENDING` with the step's own message (the user's manual steps; reported, not failed), or `not exercised` (the log-out checkpoint). Listed under the summary table |
 | `assert` | `tests/assertions/MODULE.sh`: the real outcome. Packages from the profile's own lists, commands at their pinned versions, apt sources and keyrings, docker/containerd active and `docker run --rm hello-world` (with `sudo -n` until the docker group is active), `~/.system-bootstrap` clone and pushurl, every dotbot link resolving into the clone or this repo, skills links + the name check, an interactive zsh finding claude/codex/kimi, gsettings for `Super+1..9` (plus a scan for any other holder), `Super+D` -> vicinae and show-desktop, the vicinae user service and `ping`, login shell and group membership in `/etc/group` |
 
@@ -804,7 +810,7 @@ FLUXION_BIN=/path/to/fluxion tests/run-tests.sh --require-prod-bin ...   # anoth
 
 - fluxion is resolved by `scripts/lib/fluxion-bin.sh`, exactly as `bootstrap.sh` resolves it (`$FLUXION_BIN`, else
   `fluxion-bin.local`, else PATH), so a green run covers the production binary. The run prints the binary, where it
-  came from and its binstaller pin, refuses a build without the `fix/zorin-bootstrap` fixes, and warns when an
+  came from and its binstaller pin, refuses a fluxion older than 0.4.1, and warns when an
   explicit `FLUXION_BIN` differs from what a plain `./bootstrap.sh` would run (`--require-prod-bin` makes that a
   failure). Container mode mounts the same binary.
 - Run the host tests **from the GNOME session**. Without a session bus (SSH, cron) every check that needs it fails
@@ -918,23 +924,23 @@ tests/run-tests.sh --only NAME                  # apply + idempotency + assertio
 
 ---
 
-## fluxion 0.3.1 caveats handled here
+## fluxion caveats handled here
 
-The rows marked *fixed on `fix/zorin-bootstrap`* are what [fluxion.cr patches](#fluxioncr-patches) is about; the
-rest are handled in the profiles and apply to the patched build too.
+The rows marked *fixed in fluxion 0.4.0* are what [fluxion version](#fluxion-version) is about; the rest are
+handled in the profiles and still apply.
 
 
 | Caveat | How this repo handles it |
 |---|---|
 | **`dotfiles-apply` is broken**: it passes `--config`, but dotbot-go only accepts `-c` (and it takes one config, while two base directories are needed here) | `80-dotfiles` runs `scripts/dotfiles-link.sh` from a `shell-scripts` step: `dotbot -d ~/.system-bootstrap/.files -c dotfiles/system-bootstrap.conf.yaml`, then `dotbot -d dotfiles -c dotfiles/install.conf.yaml`, with `--check` as the probe |
-| **The dotbot configs are not part of the `dotfiles` phase fingerprint, and a recorded item is skipped from state** (0.3.1 and `fix/zorin-bootstrap`), so an edited dotbot config was never linked by `./bootstrap.sh` | The link item is named `dotbot-links-<digest of both configs + dotfiles-link.sh>` (`ZB_DOTFILES_INPUTS`, exported by `bootstrap.sh`), so changed inputs make a new item that the `--check` probe decides |
+| **The dotbot configs are not part of the `dotfiles` phase fingerprint, and a recorded item is skipped from state** (0.3.1 and later), so an edited dotbot config was never linked by `./bootstrap.sh` | The link item is named `dotbot-links-<digest of both configs + dotfiles-link.sh>` (`ZB_DOTFILES_INPUTS`, exported by `bootstrap.sh`), so changed inputs make a new item that the `--check` probe decides |
 | **apt package probes always say "not installed"**: the output sanitizer turns the tab in `dpkg-query -f='${Status}\t${Version}'` into a space, so the probe never sees `install ok installed` (in 0.3.1 and current main, `src/fluxion/executor/probe.cr` + `redaction.cr`) | `--skip-already-installed` still skips completed phases, and `apt-get install` of an installed package changes nothing. Assertions check packages with `dpkg-query` directly. `tests/run-tests.sh --strict-idempotency` needs a fluxion with this fixed (done on the `fix/zorin-bootstrap` branch, which also batches each apt list into one `apt-get install` and probes `system-setting` items) |
-| **Passed `assert` steps were recorded in state** (0.3.1), so with `--skip-already-installed` their phase was skipped on the next run and the guard was not re-checked | Fixed on the `fix/zorin-bootstrap` branch (`af2c932`): an assert's pass is never stored or trusted from state, and a phase holding an assert is never skipped as complete (its other steps still skip from state/probes). Profiles keep plain `kind: assert` steps; with 0.3.1 a changed host is only re-checked under `--re-probe` |
-| **`apt-repository` probe only checked that the `.list` exists; `gpg-key` probe only that the keyring path exists** (0.3.1), so a vendor/hand-written `claude-desktop.list` (`signed-by=...asc`) or a wrong key at the keyring path counted as installed forever | Fixed on the `fix/zorin-bootstrap` branch (`f992d37`, `5d19083`): the source file must equal the declared `source` line and its keyring must be non-empty; a gpg-key keyring must hold exactly the declared fingerprint. `apps` declares `apps-claude-desktop-key` (fingerprint-pinned) + `apps-claude-desktop-repo` with no adopt step. With 0.3.1 on a host that already has the vendor `claude-desktop.list`, run the patched build once with `--re-probe --only apps` |
-| **A `prompt-logout` phase was never recorded as completed, and the run exited 0** (0.3.1): the halted phase only wrote a resume point, so every later run re-ran `session` and asked for a logout again, and `bootstrap.sh` saw rc 0 instead of the checkpoint code 75, so with `--with-optional` it carried on into the optional modules (post-checks included) before the re-login | Fixed on the `fix/zorin-bootstrap` branch (`4254ceb`, `d699c4a`): the phase is recorded as completed and `apply` exits 75, so `bootstrap.sh` stops at the checkpoint once and the next run skips `session` from state. A `prompt-logout` phase in which nothing ran (every item skipped, or only asserts) does not ask at all, so `./bootstrap.sh --re-probe` and `--only session,obs` on a converged host run to the end |
-| **A step's `probeCommand` was re-run before every item** (0.3.1), so once an earlier script made it true the later scripts of that step were skipped ("skipped: installed (probe)") and the step still counted as a success | Fixed on the `fix/zorin-bootstrap` branch (`9a77b8f`): the step's `probeCommand` is answered once per apply for the whole step. Profiles follow one rule either way: one step per observable state, and each step's probe is true only when all its scripts are done. Work judged on what an earlier step leaves behind gets its own step (`vicinae-post-install`) |
-| **The flatpak probe only lists apps** (`flatpak list --app`, 0.3.1), but OBS plugins (`com.obsproject.Studio.Plugin.*`) are runtime refs, so after their install they still read as absent and `--re-probe` installs them again (a no-op for flatpak, but reported as changes) | Fixed on the `fix/zorin-bootstrap` branch (`7430ef4`): the probe lists every installed ref. With 0.3.1 the default (state-based) idempotency run still skips them; only `--strict-idempotency` on `obs` reports them as ran again. `assert_flatpaks` checks every ref, not only apps |
-| **`gpg-key` fails on a fresh account**: it reads each key with `gpg --batch --no-options --show-keys`, and with `--no-options` gpg will not create a missing `~/.gnupg` (`gpg: Fatal: ~/.gnupg: directory does not exist!`), so on a new install every `gpg-key` step failed (0.3.1 and `fix/zorin-bootstrap`; found by the container test) | `apps` creates `~/.gnupg` (0700) in its `gnupg-home` phase, which the three `gpg-key` phases depend on |
+| **Passed `assert` steps were recorded in state** (0.3.1), so with `--skip-already-installed` their phase was skipped on the next run and the guard was not re-checked | Fixed in fluxion 0.4.0 (`af2c932`): an assert's pass is never stored or trusted from state, and a phase holding an assert is never skipped as complete (its other steps still skip from state/probes). Profiles keep plain `kind: assert` steps; with 0.3.1 a changed host is only re-checked under `--re-probe` |
+| **`apt-repository` probe only checked that the `.list` exists; `gpg-key` probe only that the keyring path exists** (0.3.1), so a vendor/hand-written `claude-desktop.list` (`signed-by=...asc`) or a wrong key at the keyring path counted as installed forever | Fixed in fluxion 0.4.0 (`f992d37`, `5d19083`): the source file must equal the declared `source` line and its keyring must be non-empty; a gpg-key keyring must hold exactly the declared fingerprint. `apps` declares `apps-claude-desktop-key` (fingerprint-pinned) + `apps-claude-desktop-repo` with no adopt step. With 0.3.1 on a host that already has the vendor `claude-desktop.list`, run the patched build once with `--re-probe --only apps` |
+| **A `prompt-logout` phase was never recorded as completed, and the run exited 0** (0.3.1): the halted phase only wrote a resume point, so every later run re-ran `session` and asked for a logout again, and `bootstrap.sh` saw rc 0 instead of the checkpoint code 75, so with `--with-optional` it carried on into the optional modules (post-checks included) before the re-login | Fixed in fluxion 0.4.0 (`4254ceb`, `d699c4a`): the phase is recorded as completed and `apply` exits 75, so `bootstrap.sh` stops at the checkpoint once and the next run skips `session` from state. A `prompt-logout` phase in which nothing ran (every item skipped, or only asserts) does not ask at all, so `./bootstrap.sh --re-probe` and `--only session,obs` on a converged host run to the end |
+| **A step's `probeCommand` was re-run before every item** (0.3.1), so once an earlier script made it true the later scripts of that step were skipped ("skipped: installed (probe)") and the step still counted as a success | Fixed in fluxion 0.4.0 (`9a77b8f`): the step's `probeCommand` is answered once per apply for the whole step. Profiles follow one rule either way: one step per observable state, and each step's probe is true only when all its scripts are done. Work judged on what an earlier step leaves behind gets its own step (`vicinae-post-install`) |
+| **The flatpak probe only lists apps** (`flatpak list --app`, 0.3.1), but OBS plugins (`com.obsproject.Studio.Plugin.*`) are runtime refs, so after their install they still read as absent and `--re-probe` installs them again (a no-op for flatpak, but reported as changes) | Fixed in fluxion 0.4.0 (`7430ef4`): the probe lists every installed ref. With 0.3.1 the default (state-based) idempotency run still skips them; only `--strict-idempotency` on `obs` reports them as ran again. `assert_flatpaks` checks every ref, not only apps |
+| **`gpg-key` fails on a fresh account**: it reads each key with `gpg --batch --no-options --show-keys`, and with `--no-options` gpg will not create a missing `~/.gnupg` (`gpg: Fatal: ~/.gnupg: directory does not exist!`), so on a new install every `gpg-key` step failed (every version; found by the container test) | `apps` creates `~/.gnupg` (0700) in its `gnupg-home` phase, which the three `gpg-key` phases depend on |
 | **fluxion never prompts for sudo**: it only uses `sudo -n` | `bootstrap.sh` runs `sudo -v` once, then a keep-alive loop runs until exit. Ubuntu's sudo ticket lasts 15 minutes and TeX Live alone takes longer |
 | **PATH is read once, at start-up** | One fluxion process per module, and `bootstrap.sh` exports all future tool directories up front, so later modules see earlier installs |
 | **`when:` is evaluated at load time** | Profiles do not use `commandExists` guards on tools that the same run installs |
@@ -1078,7 +1084,7 @@ Then edit the value in the profile and run `just validate`.
 | Flathub descriptor sha256 | `profiles/60-desktop-apps.yaml`, `profiles/optional/obs.yaml` |
 | binstaller tool versions | `config/binstaller.yaml` |
 | Vicinae version, AppImage and install-script sha256, GNOME extension zip version and sha256 (also the literal versions in the probes) | `profiles/75-vicinae.yaml` |
-| fluxion itself | Today: rebuild the `fix/zorin-bootstrap` branch and `just use-fluxion PATH`. Once a release has those fixes: `FLUXION_VERSION` in `bootstrap.sh`, and delete `fluxion-bin.local`. Read the fluxion changelog before bumping it, because the caveats above are specific to 0.3.1 |
+| fluxion itself | `FLUXION_VERSION` in `bootstrap.sh` (and `FLUXION_MIN_VERSION` in `scripts/lib/fluxion-bin.sh` once the repo depends on the new release); delete `fluxion-bin.local` if it points at an older build. Read the fluxion changelog before bumping it, because the caveats above are tied to a version |
 
 ---
 
@@ -1154,9 +1160,9 @@ server). `tests/assertions/vicinae.sh` checks all of it.
 **`tool-packages` says its backend is missing** (`cargo-binstall`, `pipx`, ...): fluxion was started without the
 exported PATH. Always go through `./bootstrap.sh` or `just`.
 
-**`bootstrap.sh` stops with "pins binstaller v0.2.0 (< v0.3.0)"**: it resolved a fluxion without the
-`fix/zorin-bootstrap` fixes (usually 0.3.1 from `~/.local/bin`). Point it at the patched build with
-`just use-fluxion PATH` or `FLUXION_BIN=PATH`; see [fluxion.cr patches](#fluxioncr-patches).
+**`bootstrap.sh` stops with "is fluxion X; this repo needs 0.4.1 or later"**: it resolved an old fluxion (from
+`fluxion-bin.local` or `~/.local/bin`). Delete `fluxion-bin.local` if it points at an old build, and install the
+release as in [fluxion version](#fluxion-version); `./bootstrap.sh` does that itself when it finds no fluxion at all.
 
 **A checksum or digest mismatch:** an upstream installer changed. Verify the new file and update the pin (see
 [Updating](#updating)).

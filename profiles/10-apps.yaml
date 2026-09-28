@@ -10,14 +10,12 @@
 # Run alone:   ./bootstrap.sh --only apps
 # Caveats:
 #   - gh and claude-desktop use apt-repository and write the SAME .list files that already
-#     exist on this host. With the patched fluxion (fix/zorin-bootstrap, f992d37) the
-#     apt-repository probe compares the .list with the declared `source` line and requires a
-#     non-empty keyring, so a hand-written/vendor claude-desktop.list (the postinst's
-#     `signed-by=...asc` line) is rewritten to the declared one. fluxion 0.3.1 only checks that
-#     the .list exists: run the patched build once with --re-probe on a host that already has a
-#     vendor claude-desktop.list. Fluxion always `gpg --dearmor`s keys, therefore the
+#     exist on this host. Since fluxion 0.4.0 (f992d37) the apt-repository probe compares the
+#     .list with the declared `source` line and requires a non-empty keyring, so a
+#     hand-written/vendor claude-desktop.list (the postinst's `signed-by=...asc` line) is
+#     rewritten to the declared one. Fluxion always `gpg --dearmor`s keys, therefore the
 #     claude-desktop keyring is a .gpg file; apps-claude-desktop-key pins its fingerprint (the
-#     patched gpg-key probe checks it). The package's postinst still rewrites
+#     gpg-key probe checks it). The package's postinst still rewrites
 #     /usr/share/keyrings/claude-desktop-archive-keyring.asc on every install/upgrade; that file
 #     is harmless. Our claude-desktop.list has no
 #     "### Managed by the claude-desktop package." marker, so the postinst leaves it alone and
@@ -56,7 +54,7 @@ spec:
             command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=resolute' /etc/os-release"
             message: "This profile targets Ubuntu 26.04 resolute"
 
-    # fluxion 0.3.1's gpg-key kind reads each downloaded key with `gpg --batch --no-options --show-keys`, and with
+    # fluxion's gpg-key kind reads each downloaded key with `gpg --batch --no-options --show-keys`, and with
     # --no-options gpg refuses to create a missing ~/.gnupg ("Fatal: ~/.gnupg: directory does not exist!"), so
     # on a fresh install (no ~/.gnupg yet) every gpg-key step failed. Create it the way gpg itself would (0700).
     - name: gnupg-home
