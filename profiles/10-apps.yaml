@@ -30,34 +30,34 @@
 #     existing .sources file is left untouched even if its content differs.
 #   - ChatGPT has no public key URL (the key ships inside the .deb, whose postinst adds
 #     chatgpt.sources), so it is installed from the vendor .deb; later updates come via apt.
-#   - fastfetch is not in the noble archive; the upstream .deb is installed (update it by
-#     re-running with --re-probe after removing it, or via the upstream release page).
+#   - fastfetch: the upstream .deb (latest release) is installed rather than the older resolute archive build
+#     (update it by re-running with --re-probe after removing it, or via the upstream release page).
 #   - Crystal: `crystal-lang.org/install.sh | sudo zsh` wrote a broken source on this host (00-base
 #     moves it aside). This phase adds the repo the installer meant to add (sourceList replaces the
 #     same crystal.list path) and installs the `crystal` meta package (crystal1.21 at the time of
 #     writing, which also ships /usr/bin/shards; never add Ubuntu's own `shards` package, it
-#     clashes). An older crystal from noble universe (1.11.2) counts as installed for the dpkg
+#     clashes). An older crystal from resolute universe (1.18.2) counts as installed for the dpkg
 #     probe, so apps-crystal-upgrade moves it to the repo build when it is older than 1.21
 #     (fluxion needs >= 1.21 to build). The OBS signing key expires 2027-09-22; when OBS renews
 #     it, update the sha256 below.
-#   - Brave is a Zorin default and is intentionally not managed here.
+#   - Brave (the brave snap on this host) is intentionally not managed here.
 apiVersion: initkit.io/v1alpha1
 kind: WorkstationProfile
 metadata:
-  name: zorin-apps
-  labels: { distro: zorin, module: apps }
+  name: ubuntu-apps
+  labels: { distro: ubuntu, module: apps }
 spec:
   target:
-    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+    os: { distribution: ubuntu, codename: resolute, release: "26.04" }
   phases:
     - name: host-check
-      description: "Refuse to run anywhere but Zorin OS 18 / Ubuntu 24.04 noble"
+      description: "Refuse to run anywhere but Ubuntu 26.04 resolute"
       steps:
         - name: apps-host-check
           kind: assert
           spec:
-            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
-            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=resolute' /etc/os-release"
+            message: "This profile targets Ubuntu 26.04 resolute"
 
     # fluxion 0.3.1's gpg-key kind reads each downloaded key with `gpg --batch --no-options --show-keys`, and with
     # --no-options gpg refuses to create a missing ~/.gnupg ("Fatal: ~/.gnupg: directory does not exist!"), so
@@ -208,7 +208,7 @@ spec:
             probeCommand: "dpkg -s chatgpt >/dev/null 2>&1"
 
     - name: fastfetch
-      description: "fastfetch (.deb from the upstream GitHub release; not in the noble archive)"
+      description: "fastfetch (.deb from the upstream GitHub release; newer than the resolute archive build)"
       dependsOn: [host-check]
       execution: { continueOnError: false }
       steps:
@@ -224,16 +224,16 @@ spec:
             probeCommand: "dpkg -s fastfetch >/dev/null 2>&1"
 
     - name: crystal
-      description: "Crystal compiler from the openSUSE OBS devel:languages:crystal repo (xUbuntu_24.04)"
+      description: "Crystal compiler from the openSUSE OBS devel:languages:crystal repo (xUbuntu_26.04)"
       dependsOn: [host-check]
       execution: { continueOnError: false }
       steps:
         - name: apps-crystal-repo
           kind: apt-repository
           spec:
-            source: deb [signed-by=/etc/apt/keyrings/crystal.gpg] https://download.opensuse.org/repositories/devel:/languages:/crystal/xUbuntu_24.04/ /
+            source: deb [signed-by=/etc/apt/keyrings/crystal.gpg] https://download.opensuse.org/repositories/devel:/languages:/crystal/xUbuntu_26.04/ /
             sourceList: /etc/apt/sources.list.d/crystal.list
-            signingKeyUrl: https://download.opensuse.org/repositories/devel:/languages:/crystal/xUbuntu_24.04/Release.key
+            signingKeyUrl: https://download.opensuse.org/repositories/devel:/languages:/crystal/xUbuntu_26.04/Release.key
             keyring: /etc/apt/keyrings/crystal.gpg
             checksum: { algorithm: sha256, value: d841f03d9866316a5dbb4a1a8032f61b9437f2493223775c3a299985c9ad8a6a }
         - name: apps-crystal

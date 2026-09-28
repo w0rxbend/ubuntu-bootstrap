@@ -1,32 +1,36 @@
 # obs.yaml - OBS Studio and its plugins from Flathub (optional module, not in the default run).
 #
 # Run alone:   ./bootstrap.sh --only obs
-# Contents:    flathub remote (no-op when it already exists) + com.obsproject.Studio with 10 plugins.
-# Caveats:     - Zorin OS Pro preinstalls com.obsproject.Studio, so on Pro only the plugins are new.
+# Contents:    flatpak (apt) + flathub remote (no-op when they already exist) + com.obsproject.Studio with 10 plugins.
+# Caveats:     - Ubuntu ships neither flatpak nor flathub; both are set up here (and by 60-desktop-apps).
 #              - Flatpaks are installed system-wide; polkit authorises that without a password only for an
 #                active local desktop session, so run this from the GNOME session, not over SSH.
 #              - The OBS phase is a leaf with continueOnError, so one unavailable plugin does not stop the rest.
 apiVersion: initkit.io/v1alpha1
 kind: WorkstationProfile
 metadata:
-  name: zorin-obs
-  labels: { distro: zorin, module: obs }
+  name: ubuntu-obs
+  labels: { distro: ubuntu, module: obs }
 spec:
   target:
-    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+    os: { distribution: ubuntu, codename: resolute, release: "26.04" }
   phases:
     - name: host-check
       steps:
         - name: obs-host-check
           kind: assert
           spec:
-            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
-            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=resolute' /etc/os-release"
+            message: "This profile targets Ubuntu 26.04 resolute"
 
     - name: flathub
-      description: "Make sure the system-wide flathub remote exists (remote-add --if-not-exists)"
+      description: "Make sure flatpak (apt) and the system-wide flathub remote exist (remote-add --if-not-exists)"
       dependsOn: [host-check]
       steps:
+        - name: obs-flatpak-apt
+          kind: apt-packages
+          spec:
+            packages: [flatpak]
         - name: obs-flathub-remote
           kind: flatpak-remote
           spec:

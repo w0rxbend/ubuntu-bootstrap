@@ -1,8 +1,8 @@
 # 60-desktop-apps.yaml - module "desktop-apps"
 #
 # GUI applications and user-level app installers:
-#   - flathub system remote (no-op on Zorin, which ships it)
-#   - 55 flatpaks from flathub, split into 8 independent category phases
+#   - flatpak itself (apt) and the flathub system remote: Ubuntu ships neither (it defaults to snaps)
+#   - 54 flatpaks from flathub, split into 8 independent category phases
 #   - snaps: theia-ide (classic) and telegram-desktop
 #   - AI CLIs: Claude Code, OpenAI Codex, Kimi Code
 #   - home-dir apps: Zed (zed.dev installer) and the Paseo AppImage, laid out the way Gear Lever
@@ -11,40 +11,44 @@
 #
 # Run alone:  ./bootstrap.sh --only desktop-apps
 #
-# IMPORTANT: run this from the logged-in, local GNOME session (not over SSH). Zorin's flatpak
+# IMPORTANT: run this from the logged-in, local GNOME session (not over SSH). The flatpak
 # installs are system-wide and polkit only authorizes them without a password for members of
 # the sudo group in an *active local* session.
 #
 # Notes:
 #   - Every category is a leaf phase with continueOnError, so one broken app never blocks others.
-#   - Several IDs are Zorin OS Pro preinstalls; installing them again is a no-op.
 #   - org.gnome.Boxes, dev.vencord.Vesktop and it.mijorus.gearlever were installed by hand on this host.
 #   - Deliberately excluded: com.oguzhaninan.Stacer (gone from flathub; apt stacer in 00-base),
-#     com.brave.Browser (Brave comes from Zorin's apt repo), dev.zed.Zed (Zed comes from
-#     zed.dev/install.sh below), org.telegram.desktop (the telegram-desktop snap is used).
+#     com.brave.Browser (Brave is the brave snap on this host), dev.zed.Zed (Zed comes from
+#     zed.dev/install.sh below), org.telegram.desktop (the telegram-desktop snap is used),
+#     app.devsuite.Ptyxis (Ubuntu 26.04 ships Ptyxis as its default terminal, org.gnome.Ptyxis).
 #   - claude-desktop and chatgpt are apt packages in 10-apps.
 apiVersion: initkit.io/v1alpha1
 kind: WorkstationProfile
 metadata:
-  name: zorin-desktop-apps
-  labels: { distro: zorin, module: desktop-apps }
+  name: ubuntu-desktop-apps
+  labels: { distro: ubuntu, module: desktop-apps }
 spec:
   target:
-    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+    os: { distribution: ubuntu, codename: resolute, release: "26.04" }
   phases:
     - name: host-check
-      description: "Refuse to run anywhere but Zorin OS 18 / Ubuntu 24.04 noble"
+      description: "Refuse to run anywhere but Ubuntu 26.04 resolute"
       steps:
         - name: desktop-apps-host-check
           kind: assert
           spec:
-            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
-            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=resolute' /etc/os-release"
+            message: "This profile targets Ubuntu 26.04 resolute"
 
     - name: flathub
-      description: "Flathub system remote (remote-add --if-not-exists)"
+      description: "flatpak (apt; not preinstalled on Ubuntu) and the Flathub system remote (remote-add --if-not-exists)"
       dependsOn: [host-check]
       steps:
+        - name: flatpak-apt
+          kind: apt-packages
+          spec:
+            packages: [flatpak]
         - name: flathub-remote
           kind: flatpak-remote
           spec:
@@ -138,7 +142,6 @@ spec:
           spec:
             remote: flathub
             apps:
-              - app.devsuite.Ptyxis
               - org.wezfurlong.wezterm
               - com.vscodium.codium
 

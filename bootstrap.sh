@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bootstrap.sh - run the Zorin OS 18 (Ubuntu 24.04 noble) workstation profiles with fluxion.
+# bootstrap.sh - run the Ubuntu 26.04 LTS (resolute) workstation profiles with fluxion.
 #
 # Every module is a standalone fluxion WorkstationProfile under profiles/. This script runs them
 # in a fixed order, and each one gets its own state name (--profile <short-name>). That way a
@@ -30,14 +30,13 @@ DEFAULT_PROFILES=(
     "binaries:profiles/40-binaries.yaml:binstaller tools in ~/.apps, nvim system links, Nerd Fonts"
     "shell:profiles/50-shell.yaml:oh-my-zsh + plugins, TPM, starship, kitty, ghostty"
     "desktop-apps:profiles/60-desktop-apps.yaml:flatpaks, snaps, Claude Code/Codex/Kimi CLIs, Zed, Paseo"
-    "gnome:profiles/70-gnome.yaml:GNOME/Zorin workspaces and keybindings"
+    "gnome:profiles/70-gnome.yaml:GNOME workspaces and keybindings, Ubuntu Dock hot-keys off"
     "vicinae:profiles/75-vicinae.yaml:Vicinae launcher, user service, GNOME extension, Super+D toggle"
     "dotfiles:profiles/80-dotfiles.yaml:~/.system-bootstrap clone, dotbot-go links, skills, tmux plugins, broot"
     "session:profiles/90-session.yaml:zsh login shell, docker/libvirt/kvm groups, logout prompt"
 )
 OPTIONAL_PROFILES=(
     "obs:profiles/optional/obs.yaml:OBS Studio + plugins (flatpak)"
-    "zorin-pro-parity:profiles/optional/zorin-pro-parity.yaml:the Zorin OS Pro flatpak set (for Core/reinstalls)"
     "gnome-extensions:profiles/optional/gnome-extensions.yaml:extra GNOME Shell extensions via gext -F"
     "wallpapers:profiles/optional/wallpapers.yaml:wallpapers from the old system-bootstrap repo"
     "post-checks:profiles/optional/post-checks.yaml:verification + manual-step reminders (after re-login)"
@@ -45,7 +44,7 @@ OPTIONAL_PROFILES=(
 
 FLUXION_VERSION="${FLUXION_VERSION:-v0.3.1}"
 FLUXION_INSTALL_URL="https://worxbend.github.io/fluxion.cr/install.sh"
-EXPECTED_REPO_DIR="$HOME/.zorin-bootstrap"
+EXPECTED_REPO_DIR="$HOME/.ubuntu-bootstrap"
 STATE_DIR="$HOME/.local/share/fluxion"
 EXIT_CHECKPOINT=75
 EXIT_INTERRUPTED=130
@@ -78,7 +77,7 @@ usage() {
     cat <<EOF
 Usage: ./bootstrap.sh [MODE] [OPTIONS]
 
-Runs the fluxion profiles in profiles/ in order (Zorin OS 18 / Ubuntu 24.04 noble).
+Runs the fluxion profiles in profiles/ in order (Ubuntu 26.04 resolute).
 
 Modes (default: apply):
   --dry-run          fluxion dry-run for each selected profile (no sudo, no changes)
@@ -328,7 +327,7 @@ if [[ "$(id -u)" -eq 0 ]]; then
 fi
 
 if [[ "$REPO_DIR" != "$(cd "$EXPECTED_REPO_DIR" 2>/dev/null && pwd -P || echo "$EXPECTED_REPO_DIR")" ]]; then
-    warn "repo is at $REPO_DIR, but the profiles hard-code repoDir=\$HOME/.zorin-bootstrap."
+    warn "repo is at $REPO_DIR, but the profiles hard-code repoDir=\$HOME/.ubuntu-bootstrap."
     warn "dotbot links will point at $EXPECTED_REPO_DIR. Move/clone the repo there for a correct run."
 fi
 
@@ -337,8 +336,8 @@ if [[ -n "${SSH_CONNECTION:-}" || -n "${SSH_TTY:-}" ]]; then
     warn "the desktop-apps, gnome and gnome-extensions modules may fail; re-run them locally."
 fi
 
-if [[ -r /etc/os-release ]] && ! grep -q '^VERSION_CODENAME=noble' /etc/os-release; then
-    warn "this host is not Ubuntu 24.04 'noble'-based; every profile's host-check will refuse to run."
+if [[ -r /etc/os-release ]] && ! grep -q '^VERSION_CODENAME=resolute' /etc/os-release; then
+    warn "this host is not Ubuntu 26.04 'resolute'; every profile's host-check will refuse to run."
 fi
 
 # PATH for fluxion: it inherits PATH once and never refreshes it, and `tool-packages` looks up

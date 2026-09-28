@@ -4,25 +4,25 @@
 # Contents:    sparse, blobless, shallow clone of github.com/w0rxbend/system-bootstrap limited to
 #              assets/Backgrounds and assets/arch-backgrounds, copied into
 #              ~/.local/share/backgrounds/system-bootstrap (pick them in Settings > Background > Add Picture,
-#              or in Zorin Appearance). This keeps ~109 MB of images out of this repo.
+#              or in Settings > Appearance). This keeps ~109 MB of images out of this repo.
 # Caveats:     - Skipped when the destination directory already exists; delete it to re-download.
 #              - Needs git (00-base) and network access to github.com.
 apiVersion: initkit.io/v1alpha1
 kind: WorkstationProfile
 metadata:
-  name: zorin-wallpapers
-  labels: { distro: zorin, module: wallpapers }
+  name: ubuntu-wallpapers
+  labels: { distro: ubuntu, module: wallpapers }
 spec:
   target:
-    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+    os: { distribution: ubuntu, codename: resolute, release: "26.04" }
   phases:
     - name: host-check
       steps:
         - name: wallpapers-host-check
           kind: assert
           spec:
-            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
-            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=resolute' /etc/os-release"
+            message: "This profile targets Ubuntu 26.04 resolute"
 
     - name: wallpapers
       description: "Fetch the old repo's wallpapers into ~/.local/share/backgrounds/system-bootstrap (leaf phase)"

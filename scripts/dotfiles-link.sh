@@ -3,10 +3,10 @@
 #
 # Two dotbot configs, each with its own base directory:
 #   1. dotfiles/system-bootstrap.conf.yaml   base ~/.system-bootstrap/.files   shared dotfiles (live clone)
-#   2. dotfiles/install.conf.yaml            base ~/.zorin-bootstrap/dotfiles  Zorin-only files, agent skills
+#   2. dotfiles/install.conf.yaml            base ~/.ubuntu-bootstrap/dotfiles  Ubuntu-only files, agent skills
 #
 # Before dotbot runs (its links use force: true), every link target that exists and is not already the right
-# link is copied with `cp -a` to ~/.zorin-bootstrap-backup/<same path relative to $HOME>. An older backup at the
+# link is copied with `cp -a` to ~/.ubuntu-bootstrap-backup/<same path relative to $HOME>. An older backup at the
 # same path is never overwritten: the new copy gets a .YYYYmmdd-HHMMSS suffix instead.
 #
 #   scripts/dotfiles-link.sh             # back up + link (what profiles/80-dotfiles.yaml and `just dotfiles` run)
@@ -15,12 +15,12 @@
 #   scripts/dotfiles-link.sh --list      # print "target<TAB>source<TAB>config" for every applicable link
 #
 # `if:` conditions in the configs are evaluated with sh, as dotbot does. The clone must exist first
-# (scripts/system-bootstrap-sync.sh). Environment: SYSTEM_BOOTSTRAP_DIR, ZORIN_BOOTSTRAP_BACKUP, DOTBOT_BIN.
+# (scripts/system-bootstrap-sync.sh). Environment: SYSTEM_BOOTSTRAP_DIR, UBUNTU_BOOTSTRAP_BACKUP, DOTBOT_BIN.
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 CLONE_DIR="${SYSTEM_BOOTSTRAP_DIR:-$HOME/.system-bootstrap}"
-BACKUP_DIR="${ZORIN_BOOTSTRAP_BACKUP:-$HOME/.zorin-bootstrap-backup}"
+BACKUP_DIR="${UBUNTU_BOOTSTRAP_BACKUP:-$HOME/.ubuntu-bootstrap-backup}"
 DOTBOT_VERSION=v0.4.2
 
 # "base directory|config file" pairs, in run order.

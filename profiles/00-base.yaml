@@ -1,7 +1,7 @@
 # 00-base.yaml -- module "base"
 #
-# Brings Zorin OS 18 (Ubuntu 24.04 noble) up to the package baseline of the old
-# Fedora/Arch workstation, using only the Ubuntu/Zorin archive:
+# Brings Ubuntu 26.04 LTS (resolute) up to the package baseline of the old
+# Fedora/Arch workstation, using only the Ubuntu archive:
 #   - full apt upgrade
 #   - debconf preseeds (mscorefonts EULA, wireshark setuid) so installs never hang
 #   - core, CLI, build, debug, GUI-dev, media, fonts/TeX, desktop and virtualization packages
@@ -20,20 +20,20 @@
 apiVersion: initkit.io/v1alpha1
 kind: WorkstationProfile
 metadata:
-  name: zorin-base
-  labels: { distro: zorin, module: base }
+  name: ubuntu-base
+  labels: { distro: ubuntu, module: base }
 spec:
   target:
-    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+    os: { distribution: ubuntu, codename: resolute, release: "26.04" }
   phases:
     - name: host-check
-      description: "Refuse to run anywhere but Zorin OS 18 / Ubuntu 24.04 noble"
+      description: "Refuse to run anywhere but Ubuntu 26.04 resolute"
       steps:
         - name: base-host-check
           kind: assert
           spec:
-            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
-            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=resolute' /etc/os-release"
+            message: "This profile targets Ubuntu 26.04 resolute"
 
     # Must run before anything calls `apt-get update`. On this host the Crystal installer was
     # piped to zsh, which kept the backslashes of ${OBS_PROJECT//:/:\/}: crystal.list points at a
@@ -248,7 +248,7 @@ spec:
               - strace
               - ltrace
               - linux-tools-common
-              - linux-tools-generic-hwe-24.04
+              - linux-tools-generic-hwe-26.04
               - tshark
               - protobuf-compiler
 
@@ -285,7 +285,8 @@ spec:
               - libgl1-mesa-dri
               - libegl-mesa0
               - mesa-utils
-              - mesa-vdpau-drivers
+              # No mesa-vdpau-drivers on 26.04: Mesa 25 dropped its VDPAU drivers (libvdpau-va-gl1 in apt-media
+              # maps VDPAU onto VA-API instead).
 
     - name: apt-media
       description: "Players, codecs, VA-API, PipeWire, restricted extras, v4l2loopback (leaf)"
@@ -314,10 +315,11 @@ spec:
               - gstreamer1.0-plugins-ugly
               - gstreamer1.0-libav
               - gstreamer1.0-pipewire
-              - libopenh264-7
+              - libopenh264-8
               - libva2
               - vainfo
-              - mesa-va-drivers
+              # Mesa's VA-API drivers live in mesa-libgallium since 26.04 (mesa-va-drivers is gone).
+              - mesa-libgallium
               - libvdpau-va-gl1
               - pipewire
               - pipewire-alsa
@@ -363,7 +365,7 @@ spec:
           kind: apt-packages
           spec:
             packages:
-              - linux-headers-generic-hwe-24.04
+              - linux-headers-generic-hwe-26.04
               - v4l2loopback-dkms
               - v4l2loopback-utils
 
@@ -447,9 +449,9 @@ spec:
               - { name: libvirtd, enabled: true, state: unchanged }
 
     - name: config
-      # git does NOT ship with Zorin OS 18 (not in its install manifest; the README quick start installs it), so
-      # this waits for apt-core, which installs it. timedatectl (systemd) does ship with Zorin.
-      description: "Global git identity/defaults and clock settings (git from apt-core; timedatectl ships with Zorin)"
+      # git does NOT ship with Ubuntu 26.04 Desktop (not in the image; the README quick start installs it), so
+      # this waits for apt-core, which installs it. timedatectl (systemd) does ship with Ubuntu; NTP is chrony.
+      description: "Global git identity/defaults and clock settings (git from apt-core; timedatectl ships with Ubuntu)"
       dependsOn: [host-check, apt-core]
       steps:
         - name: base-git-config

@@ -33,7 +33,7 @@ _zsh_finds() {
     [[ -n "$out" ]] && ! grep -q '=$' <<<"$out"
 }
 
-# Prints "tool<TAB>fork<TAB>clone" for every tool whose pin in `spec.versions` differs between the Zorin fork
+# Prints "tool<TAB>fork<TAB>clone" for every tool whose pin in `spec.versions` differs between the Ubuntu fork
 # config/binstaller.yaml and the clone's .files/.config/binstaller/config.yaml (tools only one side has are
 # listed with "-" for the other side).
 _binstaller_version_drift() {
@@ -44,7 +44,7 @@ def versions(path):
         return (yaml.safe_load(fh).get("spec") or {}).get("versions") or {}
 fork, clone = versions(sys.argv[1]), versions(sys.argv[2])
 for tool in sorted(set(fork) | set(clone)):
-    if tool == "yq" and tool not in clone:  # Zorin-only addition, documented in config/binstaller.yaml
+    if tool == "yq" and tool not in clone:  # Ubuntu-only addition, documented in config/binstaller.yaml
         continue
     if fork.get(tool) != clone.get(tool):
         print(f"{tool}\t{fork.get(tool, '-')}\t{clone.get(tool, '-')}")
@@ -73,7 +73,7 @@ assert_dotfiles() {
             _a_ok "config/binstaller.yaml pins the same versions as the clone's binstaller config"
         else
             while IFS=$'\t' read -r tool fork clone; do
-                skip "binstaller pin for $tool" "Zorin fork has $fork, system-bootstrap has $clone: port the bump into config/binstaller.yaml"
+                skip "binstaller pin for $tool" "Ubuntu fork has $fork, system-bootstrap has $clone: port the bump into config/binstaller.yaml"
             done <<<"$drift"
         fi
     else
@@ -103,8 +103,9 @@ assert_dotfiles() {
         fi
     fi
     assert_link "$HOME/.custom.zsh" "$ASSERT_REPO_DIR/dotfiles/custom.zsh"
-    assert_link "$HOME/system-update.sh" "$ASSERT_REPO_DIR/dotfiles/zorin-system-update.sh"
-    assert_link "$HOME/.config/zorin-xdg-terminals.list" "$ASSERT_REPO_DIR/dotfiles/.config/xdg-terminals.list"
+    assert_link "$HOME/system-update.sh" "$ASSERT_REPO_DIR/dotfiles/ubuntu-system-update.sh"
+    assert_link "$HOME/.config/ubuntu-xdg-terminals.list" "$ASSERT_REPO_DIR/dotfiles/.config/xdg-terminals.list"
+    assert_link "$HOME/.config/gnome-xdg-terminals.list" "$ASSERT_REPO_DIR/dotfiles/.config/xdg-terminals.list"
     assert_link "$HOME/.config/binstaller/config.yaml" "$ASSERT_REPO_DIR/config/binstaller.yaml"
     check_sh "no niri / DMS config linked" "! test -L '$HOME/.config/niri' && ! test -L '$HOME/.config/niri/config.kdl' && ! test -L '$HOME/.config/DankMaterialShell/settings.json'"
     if [[ -d "$HOME/.local/share/gnome-shell/extensions/paperwm@paperwm.github.com" || -d /usr/share/gnome-shell/extensions/paperwm@paperwm.github.com ]]; then
@@ -112,8 +113,8 @@ assert_dotfiles() {
     else
         check "paperwm.conf not linked (PaperWM not installed)" test ! -L "$HOME/.config/paperwm/paperwm.conf"
     fi
-    if [[ -e "$HOME/.zorin-bootstrap-backup" ]]; then
-        _a_ok "backups of replaced files kept in ~/.zorin-bootstrap-backup"
+    if [[ -e "$HOME/.ubuntu-bootstrap-backup" ]]; then
+        _a_ok "backups of replaced files kept in ~/.ubuntu-bootstrap-backup"
     fi
 
     section "agent skills"

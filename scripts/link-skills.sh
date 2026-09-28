@@ -1,7 +1,7 @@
 #!/bin/sh
 # link-skills.sh - point every installed coding agent at the one shared skills folder.
 #
-# Source of truth: ~/.agents/skills, a symlink to ~/.zorin-bootstrap/dotfiles/agents/skills (git-tracked).
+# Source of truth: ~/.agents/skills, a symlink to ~/.ubuntu-bootstrap/dotfiles/agents/skills (git-tracked).
 # Codex reads ~/.agents/skills natively. For the others this creates <agent-dir>/skills -> ~/.agents/skills:
 #   Claude Code ~/.claude   Cursor ~/.cursor   Gemini CLI ~/.gemini   Copilot CLI ~/.copilot
 #   opencode ~/.config/opencode
@@ -13,7 +13,7 @@
 # Rules: agents that are not installed (no agent dir) are skipped; a link that already resolves to the shared
 # folder is left alone (dotbot links the agents straight at the repo folder, which is the same place); a wrong
 # symlink is replaced with `ln -sfn`; a REAL directory is never overwritten or deleted: it is reported and the
-# script exits 1, so move it away (e.g. to ~/.zorin-bootstrap-backup/) and re-run.
+# script exits 1, so move it away (e.g. to ~/.ubuntu-bootstrap-backup/) and re-run.
 # dotbot (dotfiles/install.conf.yaml) creates the same links during the bootstrap; this script is for later
 # changes, such as an agent installed after the bootstrap.
 set -eu

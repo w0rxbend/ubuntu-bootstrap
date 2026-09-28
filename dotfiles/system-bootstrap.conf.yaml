@@ -1,12 +1,12 @@
 # dotbot-go (v0.4.2) config: links the SHARED dotfiles from the live clone of the original repo.
 #
 #   base directory (-d) = ~/.system-bootstrap/.files     (clone of github.com/w0rxbend/system-bootstrap)
-#   this file           = ~/.zorin-bootstrap/dotfiles/system-bootstrap.conf.yaml
+#   this file           = ~/.ubuntu-bootstrap/dotfiles/system-bootstrap.conf.yaml
 #
 # The clone is the source of truth: edit ~/.config/... (the links point into the clone), then commit and
-# push from ~/.system-bootstrap. Nothing here is copied into ~/.zorin-bootstrap.
+# push from ~/.system-bootstrap. Nothing here is copied into ~/.ubuntu-bootstrap.
 # Run by scripts/dotfiles-link.sh (profiles/80-dotfiles.yaml, `just dotfiles`), which backs up any real file
-# or directory at a link target into ~/.zorin-bootstrap-backup/ before dotbot replaces it (force: true).
+# or directory at a link target into ~/.ubuntu-bootstrap-backup/ before dotbot replaces it (force: true).
 #
 # Deliberately NOT linked from the clone:
 #   - niri.conf.yaml and everything it links (.config/niri, DankMaterialShell, danksearch,
@@ -14,15 +14,15 @@
 #   - arch/ and fedora/ (their install.conf.yaml and *-system-update.sh): OS-specific
 #   - .config/vesktop/vencord-settings-backup.json: a backup you import by hand in Vencord
 #   - .config/binstaller/config.yaml: ~/.config/binstaller/config.yaml is linked by dotfiles/install.conf.yaml
-#     to ~/.zorin-bootstrap/config/binstaller.yaml, a deliberate Zorin fork that fluxion applies. It differs
-#     from the clone's file only where Zorin needs it: allowSudoSymlinks false (fluxion makes the root-owned
+#     to ~/.ubuntu-bootstrap/config/binstaller.yaml, a deliberate Ubuntu fork that fluxion applies. It differs
+#     from the clone's file only where Ubuntu needs it: allowSudoSymlinks false (fluxion makes the root-owned
 #     /usr/local/bin nvim links itself), no /usr/bin nvim links, yq added, sha256 pins. Keeping it linked means
 #     a manual `binstaller apply` does exactly what the bootstrap does. The cost is drift: a version bump in
 #     the clone (renovate) does not reach the fork by itself, so tests/assertions/dotfiles.sh compares the
 #     fork's `versions:` with the clone's and reports every tool whose pin differs (skip + reason, so it is
-#     visible but does not fail a run). Port the bump into config/binstaller.yaml, or push the Zorin changes
+#     visible but does not fail a run). Port the bump into config/binstaller.yaml, or push the Ubuntu changes
 #     upstream behind an OS condition and link the clone's file here instead.
-# Zorin-only files (system-update script, kitty terminal lists, session env, ~/.custom.zsh overlay, agent
+# Ubuntu-only files (system-update script, kitty terminal lists, session env, ~/.custom.zsh overlay, agent
 # skills) are linked by dotfiles/install.conf.yaml from this repo.
 
 - defaults:
@@ -72,7 +72,7 @@
     ~/.config/yazi/keymap.toml: .config/yazi/keymap.toml
     ~/.config/bottom/bottom.toml: .config/bottom/bottom.toml
     # All 42 Nerd Font families, for a manual nerd-fonts-installer run. fluxion does not read it: it applies
-    # the same families in four batches (~/.zorin-bootstrap/config/nerd-fonts/0N-*.yaml, 15 min timeout each).
+    # the same families in four batches (~/.ubuntu-bootstrap/config/nerd-fonts/0N-*.yaml, 15 min timeout each).
     ~/.config/nerd-fonts-installer/config.yaml: .config/nerd-fonts-installer/config.yaml
     # PaperWM settings (a `dconf dump` of /org/gnome/shell/extensions/paperwm/). Only linked when the
     # PaperWM extension is installed; load it with:

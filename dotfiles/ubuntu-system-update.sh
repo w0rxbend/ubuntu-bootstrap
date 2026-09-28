@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Zorin OS 18 (Ubuntu 24.04 noble) system + toolchain updater.
+# Ubuntu 26.04 LTS (resolute) system + toolchain updater.
 # Linked to ~/system-update.sh by dotbot; run it via the `update` alias.
 # Deliberately NOT using `set -e`: one failing section must not stop the others.
 # Every section is guarded, so missing tools are skipped. A summary is printed at the end.
@@ -159,7 +159,7 @@ if [ "${#skipped[@]}" -gt 0 ]; then
   echo "Skipped: ${skipped[*]}"
 fi
 echo "Binaries in ~/.apps (binstaller) and Nerd Fonts are refreshed with:"
-echo "    cd ~/.zorin-bootstrap && just refresh-binaries    # and: just refresh-fonts"
+echo "    cd ~/.ubuntu-bootstrap && just refresh-binaries    # and: just refresh-fonts"
 if [ "${#failed[@]}" -gt 0 ]; then
   printf '\033[1;31mFailed sections: %s\033[0m\n' "${failed[*]}"
   exit 1

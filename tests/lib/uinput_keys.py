@@ -6,7 +6,7 @@
 
 Only what the gnome assertions need: Super/Shift/Ctrl/Alt plus the digits 1..9. Used by
 tests/assertions/gnome.sh when ASSERT_LIVE_INPUT=1 to prove that Super+N really switches workspace (the compositor
-sees the keys like a real keyboard's, so a stray grab by Zorin Dash etc. would show up). No third-party modules.
+sees the keys like a real keyboard's, so a stray grab by Ubuntu Dock etc. would show up). No third-party modules.
 """
 import fcntl
 import os
@@ -34,7 +34,7 @@ def main(chord: str) -> int:
             fcntl.ioctl(fd, UI_SET_KEYBIT, code)
         # struct uinput_user_dev: name[80], input_id{bustype=BUS_VIRTUAL, vendor, product, version}, ff_effects_max,
         # absmax/absmin/absfuzz/absflat[ABS_CNT=64]
-        os.write(fd, struct.pack("80sHHHHi", b"zorin-bootstrap-test-kbd", 0x06, 0x1, 0x1, 1, 0) + b"\0" * (4 * 64 * 4))
+        os.write(fd, struct.pack("80sHHHHi", b"ubuntu-bootstrap-test-kbd", 0x06, 0x1, 0x1, 1, 0) + b"\0" * (4 * 64 * 4))
         fcntl.ioctl(fd, UI_DEV_CREATE)
         time.sleep(1.0)  # let libinput/mutter pick the new device up
 

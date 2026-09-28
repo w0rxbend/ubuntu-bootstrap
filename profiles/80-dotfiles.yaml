@@ -7,9 +7,9 @@
 #   - github.com/w0rxbend/system-bootstrap is the source of truth. It is cloned over https to ~/.system-bootstrap
 #     (pushurl = SSH), and an existing clone is only ever fast-forwarded (scripts/system-bootstrap-sync.sh).
 #   - dotfiles/system-bootstrap.conf.yaml links the shared files from ~/.system-bootstrap/.files (no copies here).
-#   - dotfiles/install.conf.yaml links the Zorin-only files kept in this repo (system-update script, kitty
+#   - dotfiles/install.conf.yaml links the Ubuntu-only files kept in this repo (system-update script, kitty
 #     terminal lists, session env, the ~/.custom.zsh overlay, agent skills).
-#   - scripts/dotfiles-link.sh backs up every real file/dir at a link target to ~/.zorin-bootstrap-backup/
+#   - scripts/dotfiles-link.sh backs up every real file/dir at a link target to ~/.ubuntu-bootstrap-backup/
 #     (same relative path) and then runs dotbot once per config.
 #
 # Caveats:
@@ -25,13 +25,13 @@
 apiVersion: initkit.io/v1alpha1
 kind: WorkstationProfile
 metadata:
-  name: zorin-dotfiles
-  labels: { distro: zorin, module: dotfiles }
+  name: ubuntu-dotfiles
+  labels: { distro: ubuntu, module: dotfiles }
 spec:
   target:
-    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+    os: { distribution: ubuntu, codename: resolute, release: "26.04" }
   vars:
-    repoDir: ${HOME}/.zorin-bootstrap
+    repoDir: ${HOME}/.ubuntu-bootstrap
     # Digest of the dotbot inputs (both configs + scripts/dotfiles-link.sh), exported by bootstrap.sh. The
     # environment wins over this fallback, which only applies to a direct `fluxion apply`.
     ZB_DOTFILES_INPUTS: direct-run
@@ -41,8 +41,8 @@ spec:
         - name: dotfiles-host-check
           kind: assert
           spec:
-            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release && command -v git >/dev/null && python3 -c 'import yaml'"
-            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble and needs git + python3-yaml (00-base)"
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=resolute' /etc/os-release && command -v git >/dev/null && python3 -c 'import yaml'"
+            message: "This profile targets Ubuntu 26.04 resolute and needs git + python3-yaml (00-base)"
 
     - name: system-bootstrap-clone
       description: "Clone github.com/w0rxbend/system-bootstrap to ~/.system-bootstrap (https), else fast-forward only"
@@ -61,7 +61,7 @@ spec:
                 args: ["${repoDir}"]
                 timeout: 10m
             # Satisfied when the clone exists and already contains the remote HEAD (read-only ls-remote).
-            probeCommand: '"$HOME/.zorin-bootstrap/scripts/system-bootstrap-sync.sh" --check'
+            probeCommand: '"$HOME/.ubuntu-bootstrap/scripts/system-bootstrap-sync.sh" --check'
 
     - name: dotbot
       description: "Back up what is in the way, then link ~/.system-bootstrap/.files and dotfiles/ with dotbot-go"
@@ -86,7 +86,7 @@ spec:
                   exec bash "$1/scripts/dotfiles-link.sh"
                 args: ["${repoDir}"]
                 timeout: 10m
-            probeCommand: '"$HOME/.zorin-bootstrap/scripts/dotfiles-link.sh" --check'
+            probeCommand: '"$HOME/.ubuntu-bootstrap/scripts/dotfiles-link.sh" --check'
 
     - name: tmux-plugins
       description: "Install tmux plugins declared in ~/.tmux.conf via TPM (tmux from base, TPM from shell)"

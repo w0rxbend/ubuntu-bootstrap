@@ -1,14 +1,15 @@
 # 70-gnome.yaml - module "gnome"
 #
-# GNOME / Zorin desktop settings carried over from the old bootstrap (POSIX rewrite of the
+# GNOME desktop settings for Ubuntu 26.04 (GNOME 50), carried over from the old bootstrap (POSIX rewrite of the
 # zsh-only gsettings block):
-#   - Zorin Dash / Zorin Taskbar "hot-keys" off: both grab Super+1..9 and Shift+Super+1..9 for launching
-#     pinned apps (zorin-dash@zorinos.com is the one enabled on Zorin OS 18 Pro, with hot-keys=true)
+#   - Ubuntu Dock "hot-keys" off: ubuntu-dock@ubuntu.com (a dash-to-dock build, schema
+#     org.gnome.shell.extensions.dash-to-dock, enabled by default with hot-keys=true) grabs Super+1..9 and
+#     Shift+Super+1..9 for launching pinned apps
 #   - 9 fixed (non-dynamic) workspaces
 #   - Super+N switches to workspace N, Super+Shift+N moves the window to workspace N
 #     (GNOME's switch-to-application-N bindings are cleared so they do not clash)
 #   - Screenshot UI on Super+Print and Print
-#   - Dash/taskbar favourites as pinned on this host (Brave, Files, Software, Ghostty, Terminal, Telegram,
+#   - Dock favourites as pinned on this host (Brave, Files, App Center, Ghostty, Ptyxis, Telegram,
 #     Vesktop, ChatGPT, Claude, Paseo); runs after apps (10), shell (50, ghostty) and desktop-apps (60,
 #     telegram-desktop snap: the host pins the org.telegram.desktop flatpak, which the bootstrap replaces by the
 #     snap), so the IDs exist. Only written when Vesktop is not pinned yet, so later hand edits are kept.
@@ -18,26 +19,27 @@
 # Caveats:
 #   - Must run inside the logged-in GNOME session (gsettings needs the session D-Bus); the
 #     gnome-session-check assert fails fast otherwise (e.g. over SSH or from a TTY).
-#   - No tiling / Arch desktop pieces (niri, PaperWM, dash-to-dock, tilingshell) are configured.
+#   - No tiling / Arch desktop pieces (niri, PaperWM, dash-to-dock, tilingshell) are configured; Ubuntu Dock and
+#     tiling-assistant keep their Ubuntu defaults apart from the dock hot-keys.
 #   - GNOME extensions themselves are handled by the optional profile gnome-extensions.
 apiVersion: initkit.io/v1alpha1
 kind: WorkstationProfile
 metadata:
-  name: zorin-gnome
-  labels: { distro: zorin, module: gnome }
+  name: ubuntu-gnome
+  labels: { distro: ubuntu, module: gnome }
 spec:
   target:
-    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+    os: { distribution: ubuntu, codename: resolute, release: "26.04" }
   phases:
     - name: host-check
-      description: "Zorin OS 18 / noble, running inside a GNOME session"
+      description: "Ubuntu 26.04 / resolute, running inside a GNOME session"
       execution: { continueOnError: false }
       steps:
         - name: gnome-host-check
           kind: assert
           spec:
-            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
-            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=resolute' /etc/os-release"
+            message: "This profile targets Ubuntu 26.04 resolute"
         - name: gnome-session-check
           kind: assert
           spec:
@@ -56,13 +58,12 @@ spec:
               - name: gnome-workspaces-keybindings
                 content: |
                   set -euo pipefail
-                  # Zorin Dash (enabled on Zorin OS 18) and Zorin Taskbar grab Super+1..9 and Shift+Super+1..9
-                  # for pinned apps ("hot-keys"); free them for workspaces. Missing schemas are skipped.
-                  for schema in org.gnome.shell.extensions.zorin-dash org.gnome.shell.extensions.zorin-taskbar; do
-                    if gsettings list-keys "$schema" 2>/dev/null | grep -qx hot-keys; then
-                      gsettings set "$schema" hot-keys false
-                    fi
-                  done
+                  # Ubuntu Dock (dash-to-dock schema, enabled by default) grabs Super+1..9 and Shift+Super+1..9
+                  # for pinned apps ("hot-keys"); free them for workspaces. A missing schema is skipped.
+                  schema=org.gnome.shell.extensions.dash-to-dock
+                  if gsettings list-keys "$schema" 2>/dev/null | grep -qx hot-keys; then
+                    gsettings set "$schema" hot-keys false
+                  fi
                   gsettings set org.gnome.mutter dynamic-workspaces false
                   gsettings set org.gnome.desktop.wm.preferences num-workspaces 9
                   for i in 1 2 3 4 5 6 7 8 9; do
@@ -72,14 +73,14 @@ spec:
                   done
                   gsettings set org.gnome.shell.keybindings show-screenshot-ui "['<Super>Print', 'Print']"
                 timeout: 2m
-            # Also fails while Zorin Dash/Taskbar still grab Super+N, or GNOME's switch-to-application-N does.
-            probeCommand: "test \"$(gsettings get org.gnome.desktop.wm.preferences num-workspaces)\" = 9 && gsettings get org.gnome.mutter dynamic-workspaces | grep -qx false && gsettings get org.gnome.desktop.wm.keybindings switch-to-workspace-9 | grep -qF \"'<Super>9'\" && gsettings get org.gnome.desktop.wm.keybindings move-to-workspace-9 | grep -qF \"'<Super><Shift>9'\" && gsettings get org.gnome.shell.keybindings switch-to-application-1 | grep -qF '[]' && ! gsettings get org.gnome.shell.extensions.zorin-dash hot-keys 2>/dev/null | grep -qx true && ! gsettings get org.gnome.shell.extensions.zorin-taskbar hot-keys 2>/dev/null | grep -qx true"
+            # Also fails while Ubuntu Dock still grabs Super+N, or GNOME's switch-to-application-N does.
+            probeCommand: "test \"$(gsettings get org.gnome.desktop.wm.preferences num-workspaces)\" = 9 && gsettings get org.gnome.mutter dynamic-workspaces | grep -qx false && gsettings get org.gnome.desktop.wm.keybindings switch-to-workspace-9 | grep -qF \"'<Super>9'\" && gsettings get org.gnome.desktop.wm.keybindings move-to-workspace-9 | grep -qF \"'<Super><Shift>9'\" && gsettings get org.gnome.shell.keybindings switch-to-application-1 | grep -qF '[]' && ! gsettings get org.gnome.shell.extensions.dash-to-dock hot-keys 2>/dev/null | grep -qx true"
         - name: gnome-favorite-apps
           kind: commands
           description: "Pinned apps, as set by hand on this host"
           spec:
             commands:
               - name: favorite-apps
-                run: "gsettings set org.gnome.shell favorite-apps \"['brave-browser.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Software.desktop', 'ghostty_ghostty.desktop', 'org.gnome.Terminal.desktop', 'telegram-desktop_telegram-desktop.desktop', 'dev.vencord.Vesktop.desktop', 'chatgpt.desktop', 'com.anthropic.Claude.desktop', 'paseo.desktop']\""
+                run: "gsettings set org.gnome.shell favorite-apps \"['brave_brave.desktop', 'org.gnome.Nautilus.desktop', 'snap-store_snap-store.desktop', 'ghostty_ghostty.desktop', 'org.gnome.Ptyxis.desktop', 'telegram-desktop_telegram-desktop.desktop', 'dev.vencord.Vesktop.desktop', 'chatgpt.desktop', 'com.anthropic.Claude.desktop', 'paseo.desktop']\""
                 timeout: 1m
             probeCommand: "gsettings get org.gnome.shell favorite-apps | grep -q Vesktop"

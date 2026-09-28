@@ -1,11 +1,11 @@
-# dotbot-go (v0.4.2) config: the Zorin-ONLY dotfiles that live in this repo.
+# dotbot-go (v0.4.2) config: the Ubuntu-ONLY dotfiles that live in this repo.
 #
-#   base directory (-d) = ~/.zorin-bootstrap/dotfiles
+#   base directory (-d) = ~/.ubuntu-bootstrap/dotfiles
 #
 # The shared dotfiles (.zshrc, nvim, kitty, tmux, ...) are linked from the live clone ~/.system-bootstrap by
 # dotfiles/system-bootstrap.conf.yaml; this file only holds what has no equivalent in the original repo.
 # Both are run by scripts/dotfiles-link.sh (profiles/80-dotfiles.yaml, `just dotfiles`), which backs up
-# real files/directories at link targets into ~/.zorin-bootstrap-backup/ before dotbot replaces them.
+# real files/directories at link targets into ~/.ubuntu-bootstrap-backup/ before dotbot replaces them.
 # Link sources starting with ../config/ point at the delegated-tool configs that fluxion applies.
 
 - defaults:
@@ -29,18 +29,19 @@
     ~/.agents: {mode: 0755}
 
 - link:
-    # Sourced by the shared .zshrc (`[ -f ~/.custom.zsh ] && source ~/.custom.zsh`): Zorin/Ubuntu
+    # Sourced by the shared .zshrc (`[ -f ~/.custom.zsh ] && source ~/.custom.zsh`): Ubuntu
     # adjustments and the PATH entries the installers (Claude Code, Codex, Kimi, cargo, pnpm) need.
     ~/.custom.zsh: custom.zsh
-    ~/system-update.sh: zorin-system-update.sh
+    ~/system-update.sh: ubuntu-system-update.sh
     # kitty as default terminal. xdg-terminal-exec reads the desktop-specific lists first
-    # (XDG_CURRENT_DESKTOP=zorin:GNOME), and Zorin seeds both with org.gnome.Terminal.desktop,
-    # so all three point at the same file. The x-terminal-emulator alternative is set in 50-shell.
+    # (XDG_CURRENT_DESKTOP=ubuntu:GNOME, lowercased), and Ubuntu seeds both with org.gnome.Ptyxis.desktop
+    # (/usr/share/xdg-terminal-exec/{ubuntu,gnome}-xdg-terminals.list), so all three point at the same file.
+    # The x-terminal-emulator alternative is set in 50-shell.
     ~/.config/xdg-terminals.list: .config/xdg-terminals.list
-    ~/.config/zorin-xdg-terminals.list: .config/xdg-terminals.list
-    ~/.config/GNOME-xdg-terminals.list: .config/xdg-terminals.list
+    ~/.config/ubuntu-xdg-terminals.list: .config/xdg-terminals.list
+    ~/.config/gnome-xdg-terminals.list: .config/xdg-terminals.list
     ~/.config/environment.d/90-session.conf: .config/environment.d/90-session.conf
-    # binstaller: the Zorin fork fluxion applies (profiles/40-binaries.yaml), linked so a manual
+    # binstaller: the Ubuntu fork fluxion applies (profiles/40-binaries.yaml), linked so a manual
     # `binstaller apply` does the same thing. Why it is a fork and not the clone's file, and the drift
     # check that keeps its versions in step: see the header of dotfiles/system-bootstrap.conf.yaml.
     ~/.config/binstaller/config.yaml: ../config/binstaller.yaml

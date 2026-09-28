@@ -22,25 +22,25 @@
 #     a failure of the zsh-plugins phase. Delete the directory (or bump the ref) and re-run.
 #   - kitty is made the default terminal twice over: here as the Debian x-terminal-emulator
 #     alternative (what GNOME/GLib falls back to without xdg-terminal-exec), and in 80-dotfiles
-#     via ~/.config/{,zorin-,GNOME-}xdg-terminals.list (dotbot links).
+#     via ~/.config/{,ubuntu-,gnome-}xdg-terminals.list (dotbot links).
 #   - The ghostty snap needs a warm sudo ticket (sudo -v); bootstrap.sh takes care of that.
 apiVersion: initkit.io/v1alpha1
 kind: WorkstationProfile
 metadata:
-  name: zorin-shell
-  labels: { distro: zorin, module: shell }
+  name: ubuntu-shell
+  labels: { distro: ubuntu, module: shell }
 spec:
   target:
-    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+    os: { distribution: ubuntu, codename: resolute, release: "26.04" }
   phases:
     - name: host-check
-      description: "Refuse to run anywhere but Zorin OS 18 / Ubuntu 24.04 noble"
+      description: "Refuse to run anywhere but Ubuntu 26.04 resolute"
       steps:
         - name: shell-host-check
           kind: assert
           spec:
-            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
-            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=resolute' /etc/os-release"
+            message: "This profile targets Ubuntu 26.04 resolute"
 
     - name: oh-my-zsh
       description: "oh-my-zsh framework (already present on this host; skipped by the typed probe)"

@@ -28,11 +28,11 @@
 apiVersion: initkit.io/v1alpha1
 kind: WorkstationProfile
 metadata:
-  name: zorin-toolchains
-  labels: { distro: zorin, module: toolchains }
+  name: ubuntu-toolchains
+  labels: { distro: ubuntu, module: toolchains }
 spec:
   target:
-    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+    os: { distribution: ubuntu, codename: resolute, release: "26.04" }
   vars:
     # Bumping Go: also change the literal 'go1.27.1 ' in the go-toolchain probeCommand
     # (fluxion refuses ${...} in probes). A stale probe never matches and reinstalls Go.
@@ -44,8 +44,8 @@ spec:
         - name: toolchains-host-check
           kind: assert
           spec:
-            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
-            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=resolute' /etc/os-release"
+            message: "This profile targets Ubuntu 26.04 resolute"
 
     # --- Rust ---------------------------------------------------------------
     - name: rust

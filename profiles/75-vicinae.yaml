@@ -1,4 +1,4 @@
-# 75-vicinae.yaml - module "vicinae": the Vicinae launcher on Zorin OS 18 (GNOME 46, Wayland), on Super+D.
+# 75-vicinae.yaml - module "vicinae": the Vicinae launcher on Ubuntu 26.04 (GNOME 50, Wayland), on Super+D.
 #
 # Installs:
 #   - Vicinae v0.29.0: the official AppImage, extracted into /usr/local by the official install script (both
@@ -11,7 +11,7 @@
 #     close on focus loss on GNOME Wayland), installed into ~/.local/share/gnome-shell/extensions without the
 #     GNOME Shell confirmation dialog, and added to org.gnome.shell enabled-extensions
 #   - Super+D -> `vicinae toggle` as a GNOME custom shortcut (Vicinae's own global shortcuts need X11 or
-#     ext-hotkey-v1, which Mutter lacks). Zorin binds Super+D to show-desktop in its schema override, so that
+#     ext-hotkey-v1, which Mutter lacks). Ubuntu binds Super+D to show-desktop in its schema override, so that
 #     binding is reduced to Ctrl+Super+D and Ctrl+Alt+D first.
 #
 # Run alone:  ./bootstrap.sh --only vicinae      (inside the logged-in GNOME session)
@@ -31,22 +31,22 @@
 apiVersion: initkit.io/v1alpha1
 kind: WorkstationProfile
 metadata:
-  name: zorin-vicinae
-  labels: { distro: zorin, module: vicinae }
+  name: ubuntu-vicinae
+  labels: { distro: ubuntu, module: vicinae }
 spec:
   target:
-    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+    os: { distribution: ubuntu, codename: resolute, release: "26.04" }
   vars:
-    vicinaeCache: "${HOME}/.cache/zorin-bootstrap/vicinae"
+    vicinaeCache: "${HOME}/.cache/ubuntu-bootstrap/vicinae"
   phases:
     - name: host-check
-      description: "Zorin OS 18 / noble, curl + jq + unzip, running inside the GNOME session"
+      description: "Ubuntu 26.04 / resolute, curl + jq + unzip, running inside the GNOME session"
       steps:
         - name: vicinae-host-check
           kind: assert
           spec:
-            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release && command -v jq >/dev/null && command -v curl >/dev/null && command -v unzip >/dev/null"
-            message: "Zorin OS 18 / noble with curl, jq and unzip (00-base) required"
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=resolute' /etc/os-release && command -v jq >/dev/null && command -v curl >/dev/null && command -v unzip >/dev/null"
+            message: "Ubuntu 26.04 / resolute with curl, jq and unzip (00-base) required"
         - name: vicinae-session-check
           kind: assert
           spec:
@@ -102,7 +102,7 @@ spec:
           spec:
             shell: bash
             # Runs whenever a download is left over, i.e. right after an install or upgrade.
-            probeCommand: "test ! -e \"$HOME/.cache/zorin-bootstrap/vicinae/Vicinae-x86_64-v0.29.0.AppImage\""
+            probeCommand: "test ! -e \"$HOME/.cache/ubuntu-bootstrap/vicinae/Vicinae-x86_64-v0.29.0.AppImage\""
             scripts:
               - name: vicinae-cache-clean
                 args: ["${vicinaeCache}"]
@@ -187,7 +187,7 @@ spec:
                   gnome-extensions enable "$uuid" 2>/dev/null || echo "note: $uuid becomes active after you log out and back in"
 
     - name: vicinae-keybinding
-      description: "Super+D -> vicinae toggle; Zorin's show-desktop keeps Ctrl+Super+D and Ctrl+Alt+D"
+      description: "Super+D -> vicinae toggle; Ubuntu's show-desktop keeps Ctrl+Super+D and Ctrl+Alt+D"
       dependsOn: [vicinae-install]
       steps:
         - name: vicinae-super-d
@@ -202,7 +202,7 @@ spec:
                   set -euo pipefail
                   mk=org.gnome.settings-daemon.plugins.media-keys
                   path=/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/vicinae/
-                  # 1. Free <Super>d. Zorin's schema override sets show-desktop to
+                  # 1. Free <Super>d. Ubuntu's schema override (10_ubuntu-settings) sets show-desktop to
                   #    ['<Primary><Super>d', '<Primary><Alt>d', '<Super>d']; mutter's own binding would win.
                   python3 - <<'PY'
                   import ast, subprocess

@@ -1,4 +1,4 @@
-# Justfile for ~/.zorin-bootstrap (fluxion workstation bootstrap for Zorin OS 18 / Ubuntu noble).
+# Justfile for ~/.ubuntu-bootstrap (fluxion workstation bootstrap for Ubuntu 26.04 LTS "resolute").
 #
 # `just` is installed by the `toolchains` module (cargo-binstall), so on a fresh host start with
 # ./bootstrap.sh. Afterwards these recipes are shortcuts for it.
@@ -144,10 +144,6 @@ vicinae:
 # OBS Studio + plugins (flatpak)
 obs:
     ./bootstrap.sh --only obs
-
-# Zorin OS Pro flatpak set (for Zorin Core or a reinstall without Pro)
-pro-parity:
-    ./bootstrap.sh --only zorin-pro-parity
 
 # Extra GNOME Shell extensions via gext -F (no Shell confirmation dialog)
 gnome-extensions:

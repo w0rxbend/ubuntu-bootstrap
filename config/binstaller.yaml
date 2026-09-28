@@ -28,7 +28,7 @@ metadata:
   name: developer-binaries
   labels:
     platform: linux-amd64
-    source: zorin-bootstrap
+    source: ubuntu-bootstrap
 spec:
   policy:
     mode: developer

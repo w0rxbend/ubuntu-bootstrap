@@ -15,7 +15,7 @@ assert_vicinae() {
     check_sh "vicinae-input-server has cap_dac_override (snippets, paste)" \
         'getcap /usr/local/lib/vicinae/usr/libexec/vicinae/vicinae-input-server | grep -q cap_dac_override'
     assert_file_contains /usr/local/lib/systemd/user/vicinae.service "ExecStart=/usr/local/bin/vicinae server"
-    check "AppImage download cleaned from the cache" test ! -e "$HOME/.cache/zorin-bootstrap/vicinae/Vicinae-x86_64-v0.29.0.AppImage"
+    check "AppImage download cleaned from the cache" test ! -e "$HOME/.cache/ubuntu-bootstrap/vicinae/Vicinae-x86_64-v0.29.0.AppImage"
 
     section "server (systemd user unit)"
     assert_unit --user vicinae.service

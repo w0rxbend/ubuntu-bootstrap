@@ -16,20 +16,20 @@
 apiVersion: initkit.io/v1alpha1
 kind: WorkstationProfile
 metadata:
-  name: zorin-session
-  labels: { distro: zorin, module: session }
+  name: ubuntu-session
+  labels: { distro: ubuntu, module: session }
 spec:
   target:
-    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+    os: { distribution: ubuntu, codename: resolute, release: "26.04" }
   phases:
     - name: host-check
-      description: "Refuse to run anywhere but Zorin OS 18 / Ubuntu 24.04 noble"
+      description: "Refuse to run anywhere but Ubuntu 26.04 resolute"
       steps:
         - name: session-host-check
           kind: assert
           spec:
-            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
-            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=resolute' /etc/os-release"
+            message: "This profile targets Ubuntu 26.04 resolute"
 
     - name: session
       description: "Login shell and group memberships, then ask for a logout"

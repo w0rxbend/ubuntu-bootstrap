@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# Post-conditions of profiles/70-gnome.yaml (module "gnome"): Fedora-style Super+1..9 workspaces on Zorin.
+# Post-conditions of profiles/70-gnome.yaml (module "gnome"): Fedora-style Super+1..9 workspaces on Ubuntu.
 # shellcheck source=tests/assertions/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 # Prints every gsettings key (except the workspace bindings themselves) whose value holds exactly <Super>N,
-# <Super><Shift>N or <Shift><Super>N; fails when there is one. The Zorin Dash/Taskbar app-hotkey keys are
-# ignored because they are inert once their extension's hot-keys=false (asserted separately).
+# <Super><Shift>N or <Shift><Super>N; fails when there is one. The Ubuntu Dock (dash-to-dock) app-hotkey keys are
+# ignored because they are inert once its hot-keys=false (asserted separately).
 _gnome_foreign_super_n() {
     local hits
     hits="$(gsettings list-recursively 2>/dev/null \
         | grep -E "'(<Super>|<Super><Shift>|<Shift><Super>)[1-9]'" \
         | grep -vE '^org\.gnome\.desktop\.wm\.keybindings (switch|move)-to-workspace-[1-9] ' \
-        | grep -vE '^org\.gnome\.shell\.extensions\.zorin-(dash|taskbar) app-(shift-)?hotkey-[1-9] ' || true)"
+        | grep -vE '^org\.gnome\.shell\.extensions\.dash-to-dock app-(shift-|ctrl-)?hotkey-[1-9] ' || true)"
     [[ -z "$hits" ]] || {
         printf '%s\n' "$hits"
         return 1
@@ -65,14 +65,12 @@ assert_gnome() {
     for i in 1 2 3 4 5 6 7 8 9; do
         check_sh "switch-to-application-$i is empty" "gsettings get org.gnome.shell.keybindings switch-to-application-$i | grep -qF '[]'"
     done
-    local schema
-    for schema in org.gnome.shell.extensions.zorin-dash org.gnome.shell.extensions.zorin-taskbar; do
-        if gsettings list-keys "$schema" 2>/dev/null | grep -qx hot-keys; then
-            assert_gsetting "$schema" hot-keys false
-        else
-            skip "$schema hot-keys" "schema not installed"
-        fi
-    done
+    local schema=org.gnome.shell.extensions.dash-to-dock
+    if gsettings list-keys "$schema" 2>/dev/null | grep -qx hot-keys; then
+        assert_gsetting "$schema" hot-keys false
+    else
+        skip "$schema hot-keys (Ubuntu Dock)" "schema not installed"
+    fi
     check "no other gsettings key is bound to Super+N or Shift+Super+N" _gnome_foreign_super_n
 
     section "other settings"

@@ -3,8 +3,9 @@
 # Run alone:   ./bootstrap.sh --only gnome-extensions
 # Contents:    gnome-extensions-cli (`gext`, via pipx) and six extensions installed from extensions.gnome.org:
 #              user-theme, battery-indicator-icon, notification-icons, tophat, space-bar, AlphabeticalAppGrid.
-# Excluded:    dash-to-dock (conflicts with the Zorin Taskbar), tilingshell (tiling layout, not wanted on Zorin),
-#              appindicator and status-icons (Zorin already ships and enables them).
+# Excluded:    dash-to-dock (Ubuntu Dock is a dash-to-dock build and already enabled), tilingshell (tiling layout;
+#              Ubuntu ships tiling-assistant), appindicator and status-icons (Ubuntu ships and enables
+#              ubuntu-appindicators). All six extensions have GNOME 50 builds on extensions.gnome.org.
 # Caveats:     - Must run inside the logged-in GNOME session: gext and `gnome-extensions` talk to gnome-shell
 #                over the session D-Bus. It does not work over SSH or from a TTY.
 #              - pipx must be installed (00-base) and on fluxion's PATH; fluxion must be started with
@@ -18,19 +19,19 @@
 apiVersion: initkit.io/v1alpha1
 kind: WorkstationProfile
 metadata:
-  name: zorin-gnome-extensions
-  labels: { distro: zorin, module: gnome-extensions }
+  name: ubuntu-gnome-extensions
+  labels: { distro: ubuntu, module: gnome-extensions }
 spec:
   target:
-    os: { distribution: ubuntu, codename: noble, release: "24.04" }
+    os: { distribution: ubuntu, codename: resolute, release: "26.04" }
   phases:
     - name: host-check
       steps:
         - name: gnome-extensions-host-check
           kind: assert
           spec:
-            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=noble' /etc/os-release"
-            message: "This profile targets Zorin OS 18 / Ubuntu 24.04 noble"
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=resolute' /etc/os-release"
+            message: "This profile targets Ubuntu 26.04 resolute"
         - name: gnome-extensions-session-check
           kind: assert
           spec:

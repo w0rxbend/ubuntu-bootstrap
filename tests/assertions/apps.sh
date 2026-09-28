@@ -13,7 +13,7 @@ assert_apps() {
     assert_file_contains /etc/apt/sources.list.d/vscode.sources "Signed-By: /usr/share/keyrings/microsoft.gpg"
     assert_file_contains /etc/apt/sources.list.d/1password.sources "Signed-By: /usr/share/keyrings/1password-archive-keyring.gpg"
     assert_file_contains /etc/apt/sources.list.d/crystal.list \
-        "deb [signed-by=/etc/apt/keyrings/crystal.gpg] https://download.opensuse.org/repositories/devel:/languages:/crystal/xUbuntu_24.04/ /"
+        "deb [signed-by=/etc/apt/keyrings/crystal.gpg] https://download.opensuse.org/repositories/devel:/languages:/crystal/xUbuntu_26.04/ /"
     check "claude-desktop.list is exactly the declared source line" bash -c \
         "test \"\$(cat /etc/apt/sources.list.d/claude-desktop.list)\" = 'deb [arch=amd64 signed-by=/usr/share/keyrings/claude-desktop-archive-keyring.gpg] https://downloads.claude.ai/claude-desktop/apt/stable stable main'"
     check "claude-desktop keyring holds exactly the pinned key 31DDDE24...ECACE" bash -c \

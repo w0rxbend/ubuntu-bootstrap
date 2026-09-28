@@ -48,7 +48,7 @@ Keep `description` specific: agents decide whether to load a skill from that lin
 Every skill folder must contain a `SKILL.md` whose `name:` equals the folder name:
 
 ```bash
-cd ~/.zorin-bootstrap/dotfiles/agents/skills
+cd ~/.ubuntu-bootstrap/dotfiles/agents/skills
 for d in */; do
   d=${d%/}; [ "$d" = synced ] && continue
   n=$(sed -n 's/^name:[[:space:]]*//p' "$d/SKILL.md" 2>/dev/null | head -n1 | tr -d "\"'")
@@ -62,7 +62,7 @@ done
 
 - `synced/` is where Claude Code stores the skills it syncs from claude.ai. Because `~/.claude/skills` points
   here, that cache lands in this folder; it is git-ignored and Claude Code recreates it by itself. The
-  bootstrap backs up the old real `~/.claude/skills` directory to `~/.zorin-bootstrap-backup/.claude/skills`
+  bootstrap backs up the old real `~/.claude/skills` directory to `~/.ubuntu-bootstrap-backup/.claude/skills`
   before it is replaced by the link.
 - Codex's bundled skills live in `~/.codex/skills/.system` and are never touched. `~/.codex/skills/onboard-new-user`
   was not moved here either: it is the Codex app's first-run onboarding skill (it drives app-only tools such as

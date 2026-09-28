@@ -1,13 +1,13 @@
-# ~/.custom.zsh - Zorin OS 18 (Ubuntu 24.04) overlay for the shared ~/.zshrc.
+# ~/.custom.zsh - Ubuntu 26.04 LTS overlay for the shared ~/.zshrc.
 #
 # ~/.zshrc is linked from the live clone ~/.system-bootstrap/.files/.zshrc (the original repo, shared with
 # Fedora/Arch). That file ends with `[ -f ~/.custom.zsh ] && source ~/.custom.zsh`, the hook meant for
-# machine-specific additions. This file is linked there from ~/.zorin-bootstrap/dotfiles/custom.zsh by dotbot.
+# machine-specific additions. This file is linked there from ~/.ubuntu-bootstrap/dotfiles/custom.zsh by dotbot.
 #
 # Keep it small: anything useful on every machine belongs in ~/.system-bootstrap/.files/.zshrc instead.
 
 # Prepend a directory to PATH once, and only when it exists.
-_zorin_path_prepend() {
+_ubuntu_path_prepend() {
     [[ -d "$1" ]] || return 0
     case ":$PATH:" in
         *":$1:"*) ;;
@@ -21,22 +21,22 @@ _zorin_path_prepend() {
 # Claude Code, Codex, uv, poetry, starship, distrobox, ... live in ~/.local/bin. The shared .zshrc appends it;
 # prepend it here so these user-installed tools win over older system copies (as the hand-edited ~/.zshrc
 # did on this host before the bootstrap).
-_zorin_path_prepend "$HOME/.local/bin"
+_ubuntu_path_prepend "$HOME/.local/bin"
 
 # Kimi Code CLI.
-_zorin_path_prepend "$HOME/.kimi-code/bin"
+_ubuntu_path_prepend "$HOME/.kimi-code/bin"
 
 # pnpm >= 11 puts its executables in $PNPM_HOME/bin (the shared .zshrc only adds $PNPM_HOME).
-_zorin_path_prepend "$HOME/.local/share/pnpm/bin"
+_ubuntu_path_prepend "$HOME/.local/share/pnpm/bin"
 
 # binstaller tools that the shared .zshrc does not know about yet.
-_zorin_path_prepend "$HOME/.apps/yq/bin"
+_ubuntu_path_prepend "$HOME/.apps/yq/bin"
 
 # The oh-my-zsh `ubuntu` plugin (apt aliases); the shared plugin list carries `dnf` for Fedora.
 [[ -f "$ZSH/plugins/ubuntu/ubuntu.plugin.zsh" ]] && source "$ZSH/plugins/ubuntu/ubuntu.plugin.zsh"
 
 # Repos.
-alias bootstrap='cd "$HOME/.zorin-bootstrap"'
+alias bootstrap='cd "$HOME/.ubuntu-bootstrap"'
 alias dotfiles='cd "$HOME/.system-bootstrap"'
 
-unfunction _zorin_path_prepend
+unfunction _ubuntu_path_prepend

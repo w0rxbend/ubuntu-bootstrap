@@ -24,7 +24,7 @@
 #   tests/run-tests.sh --stages validate       # read-only: validate + lint + dry-run
 #   tests/run-tests.sh --assert-only           # only the post-condition assertions (read-only)
 #   tests/run-tests.sh --strict-idempotency    # second run with --re-probe: live probes only, no state
-#   tests/run-tests.sh --container             # non-GUI modules inside a throwaway ubuntu:24.04 container
+#   tests/run-tests.sh --container             # non-GUI modules inside a throwaway ubuntu:26.04 container
 #   tests/run-tests.sh --list                  # modules, their test profiles, and whether they need the GUI
 #
 # Options: --log-dir DIR (default tests/logs/<timestamp>, git-ignored), --no-color,
@@ -40,7 +40,7 @@ REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 cd "$REPO_DIR"
 
 # Modules that need the local GNOME session / systemd / snapd / flatpak (not testable in a plain container).
-GUI_MODULES=" desktop-apps gnome vicinae docker session gnome-extensions obs zorin-pro-parity post-checks "
+GUI_MODULES=" desktop-apps gnome vicinae docker session gnome-extensions obs post-checks "
 # Modules the container mode runs by default (apt, user-level installers, links).
 CONTAINER_MODULES="base,apps,toolchains,binaries,shell,dotfiles,wallpapers"
 
@@ -185,7 +185,7 @@ LOG_DIR="${LOG_DIR:-$REPO_DIR/tests/logs/$(date +%Y%m%d-%H%M%S)}"
 mkdir -p "$LOG_DIR"
 LOG_DIR="$(cd "$LOG_DIR" && pwd -P)"
 
-# ---- container mode: re-run this script inside a throwaway ubuntu:24.04 ---------------------------------------
+# ---- container mode: re-run this script inside a throwaway ubuntu:26.04 ---------------------------------------
 if [[ $CONTAINER -eq 1 ]]; then
     for m in "${MODULES[@]}"; do
         needs_gui "$m" && die "module '$m' needs the GNOME session/systemd; it cannot run in container mode"
@@ -197,8 +197,8 @@ if [[ $CONTAINER -eq 1 ]]; then
     else
         die "docker is not usable (install it with ./bootstrap.sh --only docker; run sudo -v first)"
     fi
-    image="zorin-bootstrap-test:noble"
-    say "building $image (tests/container/Dockerfile: ubuntu:24.04 + tests/container/zorin-baseline.txt)"
+    image="ubuntu-bootstrap-test:resolute"
+    say "building $image (tests/container/Dockerfile: ubuntu:26.04 + tests/container/ubuntu-baseline.txt)"
     "${DOCKER[@]}" build -q -t "$image" \
         --build-arg "USER_NAME=$USER" --build-arg "USER_UID=$(id -u)" --build-arg "USER_GID=$(id -g)" \
         -f tests/container/Dockerfile tests/container >/dev/null
@@ -207,24 +207,24 @@ if [[ $CONTAINER -eq 1 ]]; then
         printf '%swarn%s uncommitted changes in %s are NOT part of the container test (it clones HEAD %s)\n' \
             "$Y" "$N" "$REPO_DIR" "$(git -C "$REPO_DIR" rev-parse --short HEAD)" >&2
     fi
-    cname="zorin-bootstrap-test-$(date +%Y%m%d-%H%M%S)"
+    cname="ubuntu-bootstrap-test-$(date +%Y%m%d-%H%M%S)"
     say "running ${MODULES[*]} in container $cname (stages: $STAGES); logs: $LOG_DIR"
     # Same user, uid and home path as on the host, so ${HOME}-based profile paths are valid inside. The host repo
-    # is mounted read-only at /src/zorin-bootstrap and cloned to ~/.zorin-bootstrap (the path the profiles
+    # is mounted read-only at /src/ubuntu-bootstrap and cloned to ~/.ubuntu-bootstrap (the path the profiles
     # hard-code); logs go to /logs = $LOG_DIR. The fluxion binary is mounted read-only (a dynamically linked dev
-    # build finds its libraries in the image: they ship with Zorin, see zorin-baseline.txt).
+    # build finds its libraries in the image: they ship with Ubuntu, see ubuntu-baseline.txt).
     inner=(--in-container --only "$ONLY_CSV" --stages "$STAGES" --log-dir /logs)
     [[ $STRICT -eq 1 ]] && inner+=(--strict-idempotency)
     set +e
     "${DOCKER[@]}" run --rm --name "$cname" \
-        -v "$REPO_DIR:/src/zorin-bootstrap:ro" \
+        -v "$REPO_DIR:/src/ubuntu-bootstrap:ro" \
         -v "$LOG_DIR:/logs" \
         -v "$FLUXION_BIN:/usr/local/bin/fluxion:ro" \
         -e FLUXION_BIN=/usr/local/bin/fluxion -e ASSERT_CONTEXT=container -e TEST_CONTEXT=container \
         -e "ASSERT_NETWORK=${ASSERT_NETWORK:-1}" -e NO_COLOR=1 "$image" \
-        bash -c 'set -e; git clone -q /src/zorin-bootstrap "$HOME/.zorin-bootstrap"
-                 echo "==> cloned $(git -C "$HOME/.zorin-bootstrap" log -1 --format="%h %s") to ~/.zorin-bootstrap"
-                 exec "$HOME/.zorin-bootstrap/tests/run-tests.sh" "$@"' _ "${inner[@]}"
+        bash -c 'set -e; git clone -q /src/ubuntu-bootstrap "$HOME/.ubuntu-bootstrap"
+                 echo "==> cloned $(git -C "$HOME/.ubuntu-bootstrap" log -1 --format="%h %s") to ~/.ubuntu-bootstrap"
+                 exec "$HOME/.ubuntu-bootstrap/tests/run-tests.sh" "$@"' _ "${inner[@]}"
     rc=$?
     set -e
     exit $rc
