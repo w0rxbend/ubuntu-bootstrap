@@ -48,10 +48,14 @@ esac
 log() { printf 'dotfiles: %s\n' "$*"; }
 warn() { printf 'dotfiles: warning: %s\n' "$*" >&2; }
 
+# The system interpreter, not whatever python3 is first on PATH: PyYAML comes from apt (python3-yaml), and a
+# conda/miniforge base env activated by ~/.zshrc puts a python3 without yaml ahead of it.
+PYTHON3=/usr/bin/python3
+
 # Prints "target<TAB>source<TAB>if-command" for each link entry of a dotbot config. The target has ~ expanded,
 # the source is made absolute against the base directory (normalised, so ../config/... works).
 links_of() {
-    python3 - "$1" "$2" "$HOME" <<'PY'
+    "$PYTHON3" - "$1" "$2" "$HOME" <<'PY'
 import os, sys, yaml
 
 base, conf, home = sys.argv[1], sys.argv[2], sys.argv[3]
@@ -152,8 +156,8 @@ resolve_dotbot() {
     fi
 }
 
-command -v python3 >/dev/null 2>&1 || {
-    echo "dotfiles: python3 (with PyYAML) is required" >&2
+"$PYTHON3" -c 'import yaml' >/dev/null 2>&1 || {
+    echo "dotfiles: $PYTHON3 with PyYAML is required (apt install python3-yaml; 00-base installs it)" >&2
     exit 1
 }
 

@@ -13,8 +13,8 @@
 #     (same relative path) and then runs dotbot once per config.
 #
 # Caveats:
-# - fluxion 0.3.1's `dotfiles-apply` kind is broken (it passes `--config`, dotbot-go v0.4.2 only
-#   accepts `-c/--config-file`) and takes a single config, so dotbot is run from `shell-scripts` steps.
+# - fluxion's `dotfiles-apply` kind takes a single config (and before fluxion 0.4.2 it passed `--config`,
+#   which dotbot-go v0.4.2 rejects), so dotbot is run from `shell-scripts` steps, once per config.
 # - The probes (`--check` modes of the two scripts) decide whether a step runs the first time, and under
 #   --re-probe. Under --skip-already-installed (what bootstrap.sh passes) a recorded item is skipped from state:
 #   the clone is then only fast-forwarded by `just dotfiles-pull` or `--re-probe`, while the link step re-runs
@@ -41,7 +41,10 @@ spec:
         - name: dotfiles-host-check
           kind: assert
           spec:
-            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=resolute' /etc/os-release && command -v git >/dev/null && python3 -c 'import yaml'"
+            # /usr/bin/python3, not python3: PyYAML comes from apt (python3-yaml, 00-base), and the shell that runs
+            # bootstrap.sh may put another python3 first on PATH (miniforge's base env, via conda init in ~/.zshrc,
+            # from 30-toolchains on), which has no yaml. fluxion inherits that PATH.
+            command: "command -v apt-get >/dev/null && grep -q '^VERSION_CODENAME=resolute' /etc/os-release && command -v git >/dev/null && /usr/bin/python3 -c 'import yaml'"
             message: "This profile targets Ubuntu 26.04 resolute and needs git + python3-yaml (00-base)"
 
     - name: system-bootstrap-clone
