@@ -45,19 +45,7 @@
     # `binstaller apply` does the same thing. Why it is a fork and not the clone's file, and the drift
     # check that keeps its versions in step: see the header of dotfiles/system-bootstrap.conf.yaml.
     ~/.config/binstaller/config.yaml: ../config/binstaller.yaml
-    # Agent skills: one real, git-tracked folder shared by every agent (see agents/skills/README.md).
-    # Codex reads ~/.agents/skills natively. The optional agents are only linked when installed.
-    ~/.agents/skills: agents/skills
-    ~/.claude/skills: agents/skills
-    ~/.cursor/skills:
-      path: agents/skills
-      if: 'test -d "$HOME/.cursor"'
-    ~/.gemini/skills:
-      path: agents/skills
-      if: 'test -d "$HOME/.gemini"'
-    ~/.copilot/skills:
-      path: agents/skills
-      if: 'test -d "$HOME/.copilot"'
-    ~/.config/opencode/skills:
-      path: agents/skills
-      if: 'test -d "$HOME/.config/opencode"'
+    # Agent skills: owned by the dot-agents repository
+    # (~/Projects/Github/dot-agents, install.sh + install.conf.yaml via dotbot-go).
+    # It symlinks every vendored skill from each agent's skills directory into
+    # the clone. Do not link these paths here; the two managers would fight.
